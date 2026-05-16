@@ -27,8 +27,20 @@ export type FlaggedFeedItem = {
   transactionHash: string;
 };
 
+export type TickFeedItem = {
+  id: string;
+  eventSlug: string;
+  outcome: string;
+  side: 'BUY' | 'SELL';
+  price: number;
+  size: number;
+  notionalUsd: number;
+  timestamp: number;
+};
+
 export type FeedEvent =
   | { type: 'flagged'; data: FlaggedFeedItem }
+  | { type: 'tick'; data: TickFeedItem }
   | { type: 'status'; status: ConnectionState }
   | { type: 'heartbeat'; ts: number };
 

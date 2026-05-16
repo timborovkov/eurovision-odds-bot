@@ -33,9 +33,16 @@ const config: Config = {
           '0%': { backgroundColor: 'rgba(250, 204, 21, 0.18)' },
           '100%': { backgroundColor: 'transparent' },
         },
+        tickerIn: {
+          '0%': { opacity: '0', transform: 'translateY(-4px)' },
+          '15%': { opacity: '1', transform: 'translateY(0)' },
+          '85%': { opacity: '1', transform: 'translateY(0)' },
+          '100%': { opacity: '0', transform: 'translateY(-2px)' },
+        },
       },
       animation: {
         flashIn: 'flashIn 1.6s ease-out 1',
+        tickerIn: 'tickerIn 6s ease-in-out 1 forwards',
       },
     },
   },
