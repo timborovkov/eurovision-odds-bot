@@ -38,9 +38,14 @@ export class Flagger {
   /**
    * Pre-populate cluster windows from persisted trades after a restart so the
    * detector doesn't go blind for the first windowMs after boot.
+   *
+   * Uses the latest record's timestamp (Polymarket clock) as the "now" reference
+   * — keeps the cluster window in the same clock domain as the trade payloads.
    */
   public hydrate(records: TradeRecord[]): void {
-    const cutoff = Date.now() - this.thresholds.cluster.windowMs;
+    if (records.length === 0) return;
+    const latestMs = records.reduce((max, r) => (r.timestampMs > max ? r.timestampMs : max), 0);
+    const cutoff = latestMs - this.thresholds.cluster.windowMs;
     for (const r of records) {
       if (r.timestampMs < cutoff) continue;
       const key = clusterKeyOf(r);
@@ -54,8 +59,13 @@ export class Flagger {
   public ingest(trade: RtdsTrade): FlagResult | null {
     const record = tradeToRecord(trade);
     const key = clusterKeyOf(record);
+    // Use the trade's own payload timestamp as the "now" reference for the
+    // cluster window. Previously prune used Date.now() (local clock) while
+    // entries carried Polymarket's clock — under skew the window pruned
+    // either too aggressively or too late.
+    const nowMs = record.timestampMs;
 
-    const list = this.prune(key);
+    const list = this.prune(key, nowMs);
     // RTDS can replay a transactionHash on reconnect or initial snapshot —
     // don't double-count the same trade in the cluster window. Persist the
     // pruned list either way so expired entries don't linger across dup floods.
@@ -77,7 +87,7 @@ export class Flagger {
       if (record.notionalUsd >= this.thresholds.bigTradeUsd) severity = 'big';
     }
 
-    const cluster = this.evaluateCluster(key, list, record);
+    const cluster = this.evaluateCluster(key, list, record, nowMs);
     if (cluster) {
       reasons.push('cluster');
       // Severity is the OR of the two big-trade signals: either the individual
@@ -95,8 +105,8 @@ export class Flagger {
     return { reasons, severity };
   }
 
-  private prune(key: string): TradeRecord[] {
-    const cutoff = Date.now() - this.thresholds.cluster.windowMs;
+  private prune(key: string, nowMs: number): TradeRecord[] {
+    const cutoff = nowMs - this.thresholds.cluster.windowMs;
     const list = (this.windows.get(key) ?? []).filter((r) => r.timestampMs >= cutoff);
     return list;
   }
@@ -105,6 +115,7 @@ export class Flagger {
     key: string,
     list: TradeRecord[],
     newest: TradeRecord,
+    nowMs: number,
   ): { size: number } | null {
     const { minTrades, minTotalUsd, sameBuyerWeight, windowMs } = this.thresholds.cluster;
 
@@ -128,11 +139,11 @@ export class Flagger {
 
     const lastEmitted = this.emittedClusterAt.get(key) ?? 0;
     const sameBuyerExisting = (buyerCounts.get(newest.proxyWallet) ?? 0) >= 2;
-    const windowFresh = Date.now() - lastEmitted >= windowMs;
+    const windowFresh = nowMs - lastEmitted >= windowMs;
 
     if (!windowFresh && !sameBuyerExisting) return null;
 
-    this.emittedClusterAt.set(key, Date.now());
+    this.emittedClusterAt.set(key, nowMs);
     return { size: list.length };
   }
 }

@@ -17,8 +17,15 @@ type WatcherState = {
     string,
     { eventSlug: string; marketSlug: string; question: string; title: string }
   >;
+  /**
+   * Bounded ring of transactionHashes we've already emitted to the ticker.
+   * Used to suppress duplicate ticker pills when RTDS replays the same
+   * trade (reconnect / snapshot) beyond the client-side 6s TTL.
+   */
+  seenTickerTx: Set<string>;
 };
 
+const TICKER_DEDUP_CAP = 4096;
 const globalForWatcher = globalThis as unknown as { __watcherState?: WatcherState };
 
 const state: WatcherState =
@@ -29,9 +36,23 @@ const state: WatcherState =
     flagger: null,
     subscribedSlugs: [],
     conditionContext: new Map(),
+    seenTickerTx: new Set(),
   });
 
 const { conditionContext } = state;
+
+const markTickerSeen = (txHash: string): boolean => {
+  if (state.seenTickerTx.has(txHash)) return false;
+  state.seenTickerTx.add(txHash);
+  // Drop oldest half once the ring fills — Set preserves insertion order, so
+  // the earliest hashes are the oldest. This is cheaper than tracking ages.
+  if (state.seenTickerTx.size > TICKER_DEDUP_CAP) {
+    const drop = Math.floor(TICKER_DEDUP_CAP / 2);
+    const iter = state.seenTickerTx.values();
+    for (let i = 0; i < drop; i++) state.seenTickerTx.delete(iter.next().value as string);
+  }
+  return true;
+};
 
 async function bootstrapMarkets(): Promise<string[]> {
   // Phase 1: fan out all Gamma fetches in parallel. With 13 slugs at ~200ms
@@ -202,7 +223,10 @@ async function handleTrade(trade: RtdsTrade): Promise<void> {
     return;
   }
 
-  if (notional >= TICKER.minNotionalUsd) {
+  // Dedupe ticker emits across RTDS replays. The flagger has its own dedup
+  // for the cluster window; the ticker needs its own because it fires before
+  // the flagger sees the trade and has no cluster window to reference.
+  if (notional >= TICKER.minNotionalUsd && markTickerSeen(trade.transactionHash)) {
     broker.publish({
       type: 'tick',
       data: {

@@ -183,6 +183,38 @@ describe('Flagger', () => {
     expect(second).toBeNull();
   });
 
+  it('prunes the cluster window using the trade payload clock, not local time', () => {
+    // Simulate a Polymarket "now" that's a full day behind the local clock.
+    // If the prune logic used Date.now() the seed trades would all be
+    // pruned before the fresh trade arrives and no cluster would form;
+    // using the trade's own timestamp keeps the window intact.
+    const flagger = new Flagger();
+    const pmNow = Date.now() - 24 * 60 * 60_000;
+    const seedTimes = [pmNow - 6000, pmNow - 4000, pmNow - 2000];
+    for (let i = 0; i < seedTimes.length; i++) {
+      flagger.ingest(
+        trade({
+          txSuffix: `clock-${i}`,
+          price: 0.4,
+          size: 1000,
+          proxyWallet: `0xseed-${i}`,
+          timestamp: seedTimes[i]!,
+        }),
+      );
+    }
+    const final = flagger.ingest(
+      trade({
+        txSuffix: 'clock-final',
+        price: 0.4,
+        size: 1000,
+        proxyWallet: '0xseed-final',
+        timestamp: pmNow,
+      }),
+    );
+    expect(final).not.toBeNull();
+    expect(final!.reasons).toContain('cluster');
+  });
+
   it('hydrate seeds the cluster window from past records', () => {
     const flagger = new Flagger();
     const now = Date.now();
