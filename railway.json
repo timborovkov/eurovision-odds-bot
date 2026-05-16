@@ -1,0 +1,16 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "_comment": "WARNING: deploy.startCommand uses `prisma db push --accept-data-loss`. If you ever rename or drop a column in schema.prisma, the deployed DB on the /data volume will silently lose data. The cluster window re-hydrates from RTDS within ~10 min, so the risk is minor, but switch to `prisma migrate deploy` before storing anything you can't lose. Railway ignores unknown top-level keys.",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm prisma generate && pnpm build"
+  },
+  "deploy": {
+    "startCommand": "pnpm prisma db push --skip-generate --accept-data-loss && pnpm start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "numReplicas": 1
+  }
+}
