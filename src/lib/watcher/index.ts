@@ -1,4 +1,4 @@
-import { EUROVISION_MARKETS } from '@config/eurovision.config';
+import { EUROVISION_MARKETS, TICKER } from '@config/eurovision.config';
 
 import { prisma } from '@/lib/db';
 import { sendTelegram } from '@/lib/notify/telegram';
@@ -171,6 +171,22 @@ async function handleTrade(trade: RtdsTrade): Promise<void> {
   } catch (err) {
     console.warn('[watcher] trade upsert failed', err);
     return;
+  }
+
+  if (notional >= TICKER.minNotionalUsd) {
+    broker.publish({
+      type: 'tick',
+      data: {
+        id: trade.transactionHash,
+        eventSlug: trade.eventSlug,
+        outcome: trade.outcome,
+        side: trade.side,
+        price: trade.price,
+        size: trade.size,
+        notionalUsd: notional,
+        timestamp: trade.timestamp,
+      },
+    });
   }
 
   const flag = state.flagger.ingest(trade);

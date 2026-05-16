@@ -56,3 +56,8 @@ export const FLAG_THRESHOLDS = {
 } as const;
 
 export type FlagThresholds = typeof FLAG_THRESHOLDS;
+
+export const TICKER = {
+  /** Minimum notional USDC for a trade to appear in the live ticker strip. */
+  minNotionalUsd: 50,
+} as const;

@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConnectionDot } from './components/ConnectionDot';
+import { LiveTicker, type TickItem } from './components/LiveTicker';
 import { MarketFilter, type MarketFilterValue } from './components/MarketFilter';
 import { TradeRow } from './components/TradeRow';
 import { useSoundController } from './components/SoundController';
 import type { ConnectionState, FlaggedItem, ResolvedMarket } from './types';
 
 const MAX_FEED_ITEMS = 250;
+const MAX_TICKER_ITEMS = 12;
+const TICKER_TTL_MS = 6000;
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Eurovision Watch';
 
 type RecentResponse = {
@@ -83,6 +86,7 @@ const mapRecent = (r: RecentResponse): FlaggedItem[] =>
 export default function Page() {
   const [status, setStatus] = useState<ConnectionState>('NOT_STARTED');
   const [items, setItems] = useState<FlaggedItem[]>([]);
+  const [tickItems, setTickItems] = useState<TickItem[]>([]);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [markets, setMarkets] = useState<ResolvedMarket[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<MarketFilterValue>(new Set());
@@ -158,6 +162,20 @@ export default function Page() {
         console.warn('bad flagged event', err);
       }
     });
+    es.addEventListener('tick', (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent<string>).data) as { data: TickItem };
+        setTickItems((prev) => {
+          if (prev.some((p) => p.id === data.data.id)) return prev;
+          return [data.data, ...prev].slice(0, MAX_TICKER_ITEMS);
+        });
+        setTimeout(() => {
+          setTickItems((prev) => prev.filter((p) => p.id !== data.data.id));
+        }, TICKER_TTL_MS);
+      } catch (err) {
+        console.warn('bad tick event', err);
+      }
+    });
     es.onerror = () => {
       setStatus((prev) => (prev === 'CONNECTED' ? 'CONNECTING' : prev));
     };
@@ -193,6 +211,10 @@ export default function Page() {
           </button>
         </div>
       </header>
+
+      <section className="mb-3">
+        <LiveTicker items={tickItems} selectedEvents={selectedEvents} />
+      </section>
 
       <section className="mb-4">
         <MarketFilter markets={markets} selected={selectedEvents} onChange={setSelectedEvents} />
