@@ -51,8 +51,12 @@ const parseReasons = (reason: string): ('size' | 'cluster')[] => {
 };
 
 const mapRecent = (r: RecentResponse): FlaggedItem[] =>
+  // `id` MUST equal `transactionHash` so it matches the SSE payload from
+  // buildFeedItem — otherwise the same trade arriving via hydrate + SSE
+  // (race on first paint) would render twice. row.tradeId is the FK to
+  // Trade.id which is the transactionHash.
   r.flagged.map((row) => ({
-    id: row.id,
+    id: row.tradeId,
     tradeId: row.tradeId,
     conditionId: row.trade.conditionId,
     eventSlug: row.trade.eventSlug,
