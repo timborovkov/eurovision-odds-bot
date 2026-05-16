@@ -6,7 +6,9 @@ const Env = z.object({
   TELEGRAM_CHAT_ID: z.string().optional(),
   RTDS_HOST: z.string().default('wss://ws-live-data.polymarket.com'),
   GAMMA_BASE: z.string().default('https://gamma-api.polymarket.com'),
-  POLYMARKET_BASE: z.string().default('https://polymarket.com'),
+  // NEXT_PUBLIC_ prefix lets the same value be inlined into the client bundle
+  // (used by src/lib/url.ts) while still being readable server-side from `env`.
+  NEXT_PUBLIC_POLYMARKET_BASE: z.string().default('https://polymarket.com'),
   NEXT_PUBLIC_APP_NAME: z.string().default('Eurovision Watch'),
   PORT: z.coerce.number().int().positive().default(3000),
 });

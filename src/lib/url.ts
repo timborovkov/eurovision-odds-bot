@@ -1,4 +1,11 @@
-export const POLYMARKET_BASE_URL = 'https://polymarket.com';
+/**
+ * Single source of truth for the Polymarket base URL. Read from
+ * `NEXT_PUBLIC_POLYMARKET_BASE` so Next.js inlines the value into both the
+ * server and the client bundle — this keeps the UI deep link and the Telegram
+ * deep link pointed at the same host.
+ */
+export const POLYMARKET_BASE_URL =
+  process.env.NEXT_PUBLIC_POLYMARKET_BASE ?? 'https://polymarket.com';
 
 export type DeepLinkArgs = {
   eventSlug: string;

@@ -1,4 +1,5 @@
 import { env, telegramConfigured } from '@/env';
+import { polymarketEventUrl, truncateWallet } from '@/lib/url';
 
 import type { FlaggedFeedItem } from '../watcher/broker';
 
@@ -20,24 +21,24 @@ const escapeHtml = (raw: string): string =>
 
 const fmtUsd = (n: number): string => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
-const truncateAddr = (addr: string): string =>
-  addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
-
 export function buildTelegramMessage(item: FlaggedFeedItem): string {
   const sideEmoji = item.side === 'BUY' ? '🟢' : '🔴';
   const sevEmoji = item.severity === 'big' ? '🚨🚨' : '⚡';
   const reasonLabels = item.reasons.map((r) => r.toUpperCase()).join(' + ');
   const clusterLine = item.clusterSize != null ? `\nCluster size: <b>${item.clusterSize}</b>` : '';
-  const trader = item.name ?? item.pseudonym ?? truncateAddr(item.proxyWallet);
-  const url = `${env.POLYMARKET_BASE}/event/${item.eventSlug}?selectedMarketId=${item.conditionId}`;
+  const trader = item.name ?? item.pseudonym ?? truncateWallet(item.proxyWallet);
+  const url = polymarketEventUrl({
+    eventSlug: item.eventSlug,
+    conditionId: item.conditionId,
+  });
 
   return [
     `${sevEmoji} <b>${reasonLabels}</b> ${sideEmoji} ${item.side}`,
     `${escapeHtml(item.title)}`,
     `<i>${escapeHtml(item.outcome)}</i> @ <b>${item.price.toFixed(4)}</b>`,
     `Size: ${item.size} · Notional: <b>${fmtUsd(item.notionalUsd)}</b>${clusterLine}`,
-    `Trader: ${escapeHtml(trader)} (<code>${truncateAddr(item.proxyWallet)}</code>)`,
-    `<a href="${url}">Open on Polymarket →</a>`,
+    `Trader: ${escapeHtml(trader)} (<code>${truncateWallet(item.proxyWallet)}</code>)`,
+    `<a href="${escapeHtml(url)}">Open on Polymarket →</a>`,
   ].join('\n');
 }
 

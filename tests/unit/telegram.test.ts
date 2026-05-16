@@ -76,4 +76,16 @@ describe('buildTelegramMessage', () => {
     const msg = buildTelegramMessage({ ...baseItem, name: null, pseudonym: null });
     expect(msg).toContain('Trader: 0x1234…5678');
   });
+
+  it('HTML-escapes the deep-link URL so a stray quote in a slug cannot break the href', () => {
+    const msg = buildTelegramMessage({
+      ...baseItem,
+      eventSlug: 'eurovision-winner-2026" onclick=alert(1) x="',
+      conditionId: '0xcond',
+    });
+    // The raw " must be escaped; the anchor tag must stay intact.
+    expect(msg).toContain('&quot; onclick=alert(1) x=&quot;');
+    expect(msg).not.toContain('" onclick=alert(1)');
+    expect(msg).toMatch(/<a href="[^"]+">Open on Polymarket →<\/a>/);
+  });
 });
