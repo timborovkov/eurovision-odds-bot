@@ -108,8 +108,15 @@ export default function Page() {
   const sound = useSoundController();
   const soundRef = useRef(sound);
   soundRef.current = sound;
+  // Mirror items into a ref so addItem can dedup synchronously WITHOUT relying
+  // on the setItems updater closure — the sound + flash side effects must not
+  // fire for a tx hash we've already shown (race: same trade arrives via both
+  // the hydrate API and the SSE stream).
+  const itemsRef = useRef<FlaggedItem[]>(items);
+  itemsRef.current = items;
 
   const addItem = useCallback((item: FlaggedItem) => {
+    if (itemsRef.current.some((p) => p.id === item.id)) return;
     setItems((prev) => {
       if (prev.some((p) => p.id === item.id)) return prev;
       const next = [item, ...prev].slice(0, MAX_FEED_ITEMS);

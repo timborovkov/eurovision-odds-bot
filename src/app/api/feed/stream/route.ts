@@ -30,7 +30,7 @@ export function GET(request: NextRequest): Response {
 
       const keepalive = setInterval(() => send(`: keep-alive\n\n`), 20_000);
 
-      request.signal.addEventListener('abort', () => {
+      const cleanup = (): void => {
         clearInterval(keepalive);
         unsubscribe();
         try {
@@ -38,7 +38,17 @@ export function GET(request: NextRequest): Response {
         } catch {
           // already closed
         }
-      });
+      };
+
+      // If the request was already aborted by the time we got here (rare but
+      // possible — caller disconnected during initial routing), the abort
+      // event has already fired and a listener would never run. Catch that
+      // case explicitly so the broker subscription + interval don't leak.
+      if (request.signal.aborted) {
+        cleanup();
+        return;
+      }
+      request.signal.addEventListener('abort', cleanup, { once: true });
     },
   });
 
