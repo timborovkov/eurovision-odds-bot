@@ -59,8 +59,12 @@ export class Flagger {
 
     const list = this.prune(key);
     // RTDS can replay a transactionHash on reconnect or initial snapshot —
-    // don't double-count the same trade in the cluster window.
-    if (list.some((r) => r.id === record.id)) return null;
+    // don't double-count the same trade in the cluster window. Persist the
+    // pruned list either way so expired entries don't linger across dup floods.
+    if (list.some((r) => r.id === record.id)) {
+      this.windows.set(key, list);
+      return null;
+    }
     list.push(record);
     this.windows.set(key, list);
 

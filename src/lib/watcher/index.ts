@@ -34,49 +34,60 @@ const state: WatcherState =
 const { conditionContext } = state;
 
 async function bootstrapMarkets(): Promise<string[]> {
+  // Phase 1: fan out all Gamma fetches in parallel. With 13 slugs at ~200ms
+  // each that's the difference between ~2.6s and ~250ms on boot — meaningful
+  // against Railway's 30s healthcheck budget.
+  const resolutions = await Promise.allSettled(
+    EUROVISION_MARKETS.map((ref) => resolveEvent(ref.eventSlug)),
+  );
+
+  // Phase 2: write per-event in series so SQLite doesn't see overlapping
+  // write batches from different events. Upserts WITHIN an event still run
+  // in parallel — Prisma's connection pool serializes them on the SQLite
+  // side, but the request fan-out is fine.
   const slugs: string[] = [];
-  for (const ref of EUROVISION_MARKETS) {
-    try {
-      const event = await resolveEvent(ref.eventSlug);
-      if (!event) {
-        console.warn(`[watcher] event not found on Gamma: ${ref.eventSlug}`);
-        continue;
-      }
-      slugs.push(event.eventSlug);
-      for (const market of event.markets) {
-        conditionContext.set(market.conditionId, {
-          eventSlug: event.eventSlug,
-          marketSlug: market.marketSlug,
-          question: market.question,
-          title: event.title,
-        });
-      }
-      // Parallelize the per-event upsert batch (~32 round-trips per event)
-      // so boot doesn't serialize ~400 sequential DB writes.
-      await Promise.all(
-        event.markets.map((market) =>
-          prisma.market.upsert({
-            where: { conditionId: market.conditionId },
-            create: {
-              conditionId: market.conditionId,
-              eventSlug: event.eventSlug,
-              marketSlug: market.marketSlug,
-              question: market.question,
-              outcomes: JSON.stringify(market.outcomes),
-            },
-            update: {
-              eventSlug: event.eventSlug,
-              marketSlug: market.marketSlug,
-              question: market.question,
-              outcomes: JSON.stringify(market.outcomes),
-            },
-          }),
-        ),
-      );
-      console.log(`[watcher] resolved ${ref.eventSlug} → ${event.markets.length} market(s)`);
-    } catch (err) {
-      console.warn(`[watcher] failed to resolve ${ref.eventSlug}`, err);
+  for (let i = 0; i < resolutions.length; i++) {
+    const ref = EUROVISION_MARKETS[i]!;
+    const result = resolutions[i]!;
+    if (result.status === 'rejected') {
+      console.warn(`[watcher] failed to resolve ${ref.eventSlug}`, result.reason);
+      continue;
     }
+    const event = result.value;
+    if (!event) {
+      console.warn(`[watcher] event not found on Gamma: ${ref.eventSlug}`);
+      continue;
+    }
+    slugs.push(event.eventSlug);
+    for (const market of event.markets) {
+      conditionContext.set(market.conditionId, {
+        eventSlug: event.eventSlug,
+        marketSlug: market.marketSlug,
+        question: market.question,
+        title: event.title,
+      });
+    }
+    await Promise.all(
+      event.markets.map((market) =>
+        prisma.market.upsert({
+          where: { conditionId: market.conditionId },
+          create: {
+            conditionId: market.conditionId,
+            eventSlug: event.eventSlug,
+            marketSlug: market.marketSlug,
+            question: market.question,
+            outcomes: JSON.stringify(market.outcomes),
+          },
+          update: {
+            eventSlug: event.eventSlug,
+            marketSlug: market.marketSlug,
+            question: market.question,
+            outcomes: JSON.stringify(market.outcomes),
+          },
+        }),
+      ),
+    );
+    console.log(`[watcher] resolved ${ref.eventSlug} → ${event.markets.length} market(s)`);
   }
   return slugs;
 }
