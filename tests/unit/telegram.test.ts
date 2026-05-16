@@ -25,6 +25,10 @@ const baseItem: FlaggedFeedItem = {
   severity: 'normal',
   clusterKey: null,
   clusterSize: null,
+  clusterTotalUsd: null,
+  spreeSize: null,
+  spreeTotalUsd: null,
+  spreeFirstTimestamp: null,
   transactionHash: '0xabc',
 };
 
@@ -44,18 +48,42 @@ describe('buildTelegramMessage', () => {
     expect(msg).toContain('0x1234…5678'); // truncated wallet
   });
 
-  it('escalates severity for big trades and includes cluster size', () => {
+  it('escalates severity for big trades and includes cluster size + total', () => {
     const msg = buildTelegramMessage({
       ...baseItem,
       severity: 'big',
       reasons: ['size', 'cluster'],
       clusterSize: 7,
+      clusterTotalUsd: 12345,
       side: 'SELL',
     });
     expect(msg).toContain('🚨🚨');
     expect(msg).toContain('SIZE + CLUSTER');
     expect(msg).toContain('🔴 SELL');
-    expect(msg).toContain('Cluster size: <b>7</b>');
+    expect(msg).toContain('Cluster: <b>7 trades · $12,345</b>');
+  });
+
+  it('renders a spree line when one wallet is accumulating', () => {
+    const now = Date.now();
+    const msg = buildTelegramMessage({
+      ...baseItem,
+      timestamp: now,
+      reasons: ['size', 'spree'],
+      spreeSize: 4,
+      spreeTotalUsd: 18500,
+      spreeFirstTimestamp: now - 7 * 60_000,
+    });
+    expect(msg).toContain('SIZE + SPREE');
+    expect(msg).toContain('🎯 Spree:');
+    expect(msg).toContain('4 trades · $18,500');
+    expect(msg).toContain('in 7m');
+  });
+
+  it('omits the spree line when spreeSize is 1 or null', () => {
+    expect(buildTelegramMessage(baseItem)).not.toContain('🎯 Spree');
+    expect(buildTelegramMessage({ ...baseItem, spreeSize: 1, spreeTotalUsd: 500 })).not.toContain(
+      '🎯 Spree',
+    );
   });
 
   it('HTML-escapes title, outcome, and trader to block injection from Polymarket strings', () => {

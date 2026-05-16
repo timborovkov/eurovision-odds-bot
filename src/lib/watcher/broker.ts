@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events';
 
 import type { ConnectionState } from './rtds';
 
+export type FlagReason = 'size' | 'cluster' | 'spree';
+
 export type FlaggedFeedItem = {
   id: string;
   tradeId: string;
@@ -20,21 +22,32 @@ export type FlaggedFeedItem = {
   pseudonym: string | null;
   name: string | null;
   timestamp: number;
-  reasons: ('size' | 'cluster')[];
+  reasons: FlagReason[];
   severity: 'normal' | 'big';
   clusterKey: string | null;
   clusterSize: number | null;
+  clusterTotalUsd: number | null;
+  spreeSize: number | null;
+  spreeTotalUsd: number | null;
+  /** Earliest trade in the active spree window (ms since epoch). */
+  spreeFirstTimestamp: number | null;
   transactionHash: string;
 };
 
 export type TickFeedItem = {
   id: string;
+  conditionId: string;
   eventSlug: string;
+  marketSlug: string;
+  title: string;
   outcome: string;
   side: 'BUY' | 'SELL';
   price: number;
   size: number;
   notionalUsd: number;
+  proxyWallet: string;
+  pseudonym: string | null;
+  name: string | null;
   timestamp: number;
 };
 

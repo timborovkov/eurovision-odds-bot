@@ -1,3 +1,5 @@
+export type FlagReason = 'size' | 'cluster' | 'spree';
+
 export type FlaggedItem = {
   id: string;
   tradeId: string;
@@ -16,10 +18,14 @@ export type FlaggedItem = {
   pseudonym: string | null;
   name: string | null;
   timestamp: number;
-  reasons: ('size' | 'cluster')[];
+  reasons: FlagReason[];
   severity: 'normal' | 'big';
   clusterKey: string | null;
   clusterSize: number | null;
+  clusterTotalUsd: number | null;
+  spreeSize: number | null;
+  spreeTotalUsd: number | null;
+  spreeFirstTimestamp: number | null;
   transactionHash: string;
 };
 

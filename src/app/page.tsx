@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { TICKER } from '@config/eurovision.config';
+
 import { ConnectionDot } from './components/ConnectionDot';
 import { LiveTicker, type TickItem } from './components/LiveTicker';
 import { MarketFilter, type MarketFilterValue } from './components/MarketFilter';
 import { TradeRow } from './components/TradeRow';
 import { useSoundController } from './components/SoundController';
-import type { ConnectionState, FlaggedItem, ResolvedMarket } from './types';
+import type { ConnectionState, FlaggedItem, FlagReason, ResolvedMarket } from './types';
 
 const MAX_FEED_ITEMS = 250;
-const MAX_TICKER_ITEMS = 12;
-const TICKER_TTL_MS = 6000;
 const STALE_TICK_MS = 45_000;
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Eurovision Watch';
 
@@ -23,6 +23,10 @@ type RecentResponse = {
     severity: 'normal' | 'big';
     clusterKey: string | null;
     clusterSize: number | null;
+    clusterTotalUsd: number | null;
+    spreeSize: number | null;
+    spreeTotalUsd: number | null;
+    spreeFirstTimestamp: string | null;
     createdAt: string;
     trade: {
       id: string;
@@ -46,11 +50,12 @@ type RecentResponse = {
 
 type MarketsResponse = { markets: ResolvedMarket[] };
 
-const parseReasons = (reason: string): ('size' | 'cluster')[] => {
+const parseReasons = (reason: string): FlagReason[] => {
   const parts = reason.split('+');
-  const out: ('size' | 'cluster')[] = [];
+  const out: FlagReason[] = [];
   if (parts.includes('size')) out.push('size');
   if (parts.includes('cluster')) out.push('cluster');
+  if (parts.includes('spree')) out.push('spree');
   return out.length > 0 ? out : ['size'];
 };
 
@@ -81,6 +86,12 @@ const mapRecent = (r: RecentResponse): FlaggedItem[] =>
     severity: row.severity,
     clusterKey: row.clusterKey,
     clusterSize: row.clusterSize,
+    clusterTotalUsd: row.clusterTotalUsd,
+    spreeSize: row.spreeSize,
+    spreeTotalUsd: row.spreeTotalUsd,
+    spreeFirstTimestamp: row.spreeFirstTimestamp
+      ? new Date(row.spreeFirstTimestamp).getTime()
+      : null,
     transactionHash: row.trade.id,
   }));
 
@@ -182,11 +193,11 @@ export default function Page() {
         setLastTickAt(Date.now());
         setTickItems((prev) => {
           if (prev.some((p) => p.id === data.data.id)) return prev;
-          return [data.data, ...prev].slice(0, MAX_TICKER_ITEMS);
+          return [data.data, ...prev].slice(0, TICKER.maxPills);
         });
         setTimeout(() => {
           setTickItems((prev) => prev.filter((p) => p.id !== data.data.id));
-        }, TICKER_TTL_MS);
+        }, TICKER.pillTtlMs);
       } catch (err) {
         console.warn('bad tick event', err);
       }

@@ -25,6 +25,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       severity: r.severity,
       clusterKey: r.clusterKey,
       clusterSize: r.clusterSize,
+      clusterTotalUsd: r.clusterTotalUsd,
+      spreeSize: r.spreeSize,
+      spreeTotalUsd: r.spreeTotalUsd,
+      spreeFirstTimestamp: r.spreeFirstTimestamp?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
       trade: {
         id: r.trade.id,

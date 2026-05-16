@@ -25,6 +25,19 @@ const timeAgo = (ms: number): string => {
   return `${d}d ago`;
 };
 
+const fmtUsdCompact = (n: number): string => {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, '')}k`;
+  return `$${n.toFixed(0)}`;
+};
+
+const minutesSince = (ms: number | null): number | null => {
+  if (ms == null) return null;
+  const diff = Date.now() - ms;
+  if (diff < 0) return 0;
+  return Math.max(1, Math.round(diff / 60_000));
+};
+
 export function TradeRow({ item, isNew }: { item: FlaggedItem; isNew: boolean }) {
   const [copied, setCopied] = useState(false);
 
@@ -63,7 +76,32 @@ export function TradeRow({ item, isNew }: { item: FlaggedItem; isNew: boolean })
           {item.reasons.includes('size') && <Badge color="warn">LARGE</Badge>}
           {item.severity === 'big' && <Badge color="big">BIG</Badge>}
           {item.reasons.includes('cluster') && (
-            <Badge color="warn">CLUSTER {item.clusterSize ? `×${item.clusterSize}` : ''}</Badge>
+            <Badge
+              color="warn"
+              title={
+                item.clusterTotalUsd != null
+                  ? `Cluster total: $${item.clusterTotalUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                  : undefined
+              }
+            >
+              CLUSTER
+              {item.clusterSize ? ` ×${item.clusterSize}` : ''}
+              {item.clusterTotalUsd != null ? ` · ${fmtUsdCompact(item.clusterTotalUsd)}` : ''}
+            </Badge>
+          )}
+          {item.reasons.includes('spree') && (
+            <Badge
+              color="spree"
+              title={
+                item.spreeTotalUsd != null
+                  ? `Single-wallet spree: $${item.spreeTotalUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                  : undefined
+              }
+            >
+              SPREE
+              {item.spreeSize ? ` ×${item.spreeSize}` : ''}
+              {item.spreeTotalUsd != null ? ` · ${fmtUsdCompact(item.spreeTotalUsd)}` : ''}
+            </Badge>
           )}
         </div>
       </header>
@@ -82,6 +120,15 @@ export function TradeRow({ item, isNew }: { item: FlaggedItem; isNew: boolean })
       <footer className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs">
         <div className="text-muted">
           <span className="text-text/80">{trader}</span>
+          {item.spreeSize != null && item.spreeSize > 1 && (
+            <span className="ml-1.5 font-semibold text-sell" title="Same-wallet accumulation">
+              ×{item.spreeSize}
+              {(() => {
+                const mins = minutesSince(item.spreeFirstTimestamp);
+                return mins != null ? ` in ${mins}m` : '';
+              })()}
+            </span>
+          )}
           <span className="ml-2 font-mono text-muted/80">{truncateWallet(item.proxyWallet)}</span>
           <span className="ml-3">{timeAgo(item.timestamp)}</span>
         </div>
@@ -107,11 +154,26 @@ export function TradeRow({ item, isNew }: { item: FlaggedItem; isNew: boolean })
   );
 }
 
-function Badge({ color, children }: { color: 'warn' | 'big'; children: React.ReactNode }) {
+function Badge({
+  color,
+  title,
+  children,
+}: {
+  color: 'warn' | 'big' | 'spree';
+  title?: string;
+  children: React.ReactNode;
+}) {
   const cls =
-    color === 'big' ? 'bg-big/15 text-big border-big/40' : 'bg-warn/15 text-warn border-warn/40';
+    color === 'big'
+      ? 'bg-big/15 text-big border-big/40'
+      : color === 'spree'
+        ? 'bg-sell/15 text-sell border-sell/40'
+        : 'bg-warn/15 text-warn border-warn/40';
   return (
-    <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}>
+    <span
+      title={title}
+      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}
+    >
       {children}
     </span>
   );

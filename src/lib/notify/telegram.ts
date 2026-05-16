@@ -21,25 +21,46 @@ const escapeHtml = (raw: string): string =>
 
 const fmtUsd = (n: number): string => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
+const fmtUsdRounded = (n: number): string =>
+  `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
 export function buildTelegramMessage(item: FlaggedFeedItem): string {
   const sideEmoji = item.side === 'BUY' ? '🟢' : '🔴';
   const sevEmoji = item.severity === 'big' ? '🚨🚨' : '⚡';
   const reasonLabels = item.reasons.map((r) => r.toUpperCase()).join(' + ');
-  const clusterLine = item.clusterSize != null ? `\nCluster size: <b>${item.clusterSize}</b>` : '';
   const trader = item.name ?? item.pseudonym ?? truncateWallet(item.proxyWallet);
   const url = polymarketEventUrl({
     eventSlug: item.eventSlug,
     conditionId: item.conditionId,
   });
 
-  return [
+  const lines: string[] = [
     `${sevEmoji} <b>${reasonLabels}</b> ${sideEmoji} ${item.side}`,
     `${escapeHtml(item.title)}`,
     `<i>${escapeHtml(item.outcome)}</i> @ <b>${item.price.toFixed(4)}</b>`,
-    `Size: ${item.size} · Notional: <b>${fmtUsd(item.notionalUsd)}</b>${clusterLine}`,
+    `Size: ${item.size} · Notional: <b>${fmtUsd(item.notionalUsd)}</b>`,
+  ];
+
+  if (item.clusterSize != null) {
+    const total = item.clusterTotalUsd != null ? ` · ${fmtUsdRounded(item.clusterTotalUsd)}` : '';
+    lines.push(`Cluster: <b>${item.clusterSize} trades${total}</b>`);
+  }
+
+  if (item.spreeSize != null && item.spreeSize > 1) {
+    const total = item.spreeTotalUsd != null ? ` · ${fmtUsdRounded(item.spreeTotalUsd)}` : '';
+    const window =
+      item.spreeFirstTimestamp != null
+        ? ` in ${Math.max(1, Math.round((item.timestamp - item.spreeFirstTimestamp) / 60_000))}m`
+        : '';
+    lines.push(`🎯 Spree: <b>${item.spreeSize} trades${total}</b> from this wallet${window}`);
+  }
+
+  lines.push(
     `Trader: ${escapeHtml(trader)} (<code>${truncateWallet(item.proxyWallet)}</code>)`,
     `<a href="${escapeHtml(url)}">Open on Polymarket →</a>`,
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
 export async function sendTelegram(item: FlaggedFeedItem): Promise<void> {

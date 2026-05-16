@@ -16,6 +16,11 @@ const TEST_THRESHOLDS = {
     minTotalUsd: 1_500,
     sameBuyerWeight: 3,
   },
+  spree: {
+    windowMs: 10 * 60_000,
+    minTrades: 3,
+    minTotalUsd: 1_500,
+  },
 } as const;
 
 const makeFlagger = (): Flagger => new Flagger(TEST_THRESHOLDS);
@@ -186,6 +191,219 @@ describe('Flagger', () => {
     expect(final).not.toBeNull();
     expect(final!.reasons).toEqual(expect.arrayContaining(['size', 'cluster']));
     expect(final!.severity).toBe('big');
+  });
+
+  it('cluster flag carries the summed notional of trades in the window', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    const ts = (offset: number) => now - offset;
+    const inputs = [
+      trade({ txSuffix: 'ct1', price: 0.5, size: 1000, proxyWallet: '0xa', timestamp: ts(4000) }),
+      trade({ txSuffix: 'ct2', price: 0.5, size: 1000, proxyWallet: '0xb', timestamp: ts(3000) }),
+      trade({ txSuffix: 'ct3', price: 0.5, size: 1000, proxyWallet: '0xc', timestamp: ts(2000) }),
+      trade({ txSuffix: 'ct4', price: 0.5, size: 1000, proxyWallet: '0xd', timestamp: ts(1000) }),
+    ];
+    let last = null;
+    for (const t of inputs) last = flagger.ingest(t);
+    expect(last).not.toBeNull();
+    expect(last!.reasons).toContain('cluster');
+    expect(last!.clusterTotalUsd).toBeCloseTo(2000, 2);
+    expect(last!.clusterSize).toBe(4);
+  });
+
+  it('spree fires for 3 same-wallet trades on the same outcome above minTotalUsd', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    const inputs = [
+      trade({
+        txSuffix: 'sp1',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 3000,
+      }),
+      trade({
+        txSuffix: 'sp2',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 2000,
+      }),
+      trade({
+        txSuffix: 'sp3',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 1000,
+      }),
+    ];
+    let last = null;
+    for (const t of inputs) last = flagger.ingest(t);
+    expect(last).not.toBeNull();
+    expect(last!.reasons).toContain('spree');
+    expect(last!.spreeSize).toBe(3);
+    expect(last!.spreeTotalUsd).toBeCloseTo(1650, 0);
+    expect(last!.spreeFirstTimestampMs).toBe(now - 3000);
+  });
+
+  it('spree does NOT fire across different outcomes for the same wallet', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    flagger.ingest(
+      trade({
+        txSuffix: 'd1',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        outcomeIndex: 0,
+        timestamp: now - 3000,
+      }),
+    );
+    flagger.ingest(
+      trade({
+        txSuffix: 'd2',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        outcomeIndex: 1,
+        timestamp: now - 2000,
+      }),
+    );
+    const last = flagger.ingest(
+      trade({
+        txSuffix: 'd3',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        outcomeIndex: 2,
+        timestamp: now - 1000,
+      }),
+    );
+    expect(last?.reasons.includes('spree') ?? false).toBe(false);
+  });
+
+  it('spree does NOT fire when same wallet flips between BUY and SELL', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    flagger.ingest(
+      trade({
+        txSuffix: 'm1',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xflip',
+        side: 'BUY',
+        timestamp: now - 3000,
+      }),
+    );
+    flagger.ingest(
+      trade({
+        txSuffix: 'm2',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xflip',
+        side: 'SELL',
+        timestamp: now - 2000,
+      }),
+    );
+    const last = flagger.ingest(
+      trade({
+        txSuffix: 'm3',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xflip',
+        side: 'BUY',
+        timestamp: now - 1000,
+      }),
+    );
+    expect(last?.reasons.includes('spree') ?? false).toBe(false);
+  });
+
+  it('a single big trade can surface BOTH cluster and spree when conditions align', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    // 4 trades from 4 distinct buyers trips cluster on the last (4-buyer rule).
+    // The 3 trades from 0xwhale also trip spree on the 3rd whale trade.
+    // To get BOTH on the SAME triggering trade, interleave so the 4th cluster
+    // trade is also the 3rd spree trade from 0xwhale.
+    flagger.ingest(
+      trade({
+        txSuffix: 'b1',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 5000,
+      }),
+    );
+    flagger.ingest(
+      trade({ txSuffix: 'b2', price: 0.5, size: 1100, proxyWallet: '0xb', timestamp: now - 4000 }),
+    );
+    flagger.ingest(
+      trade({
+        txSuffix: 'b3',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 3000,
+      }),
+    );
+    flagger.ingest(
+      trade({ txSuffix: 'b4', price: 0.5, size: 1100, proxyWallet: '0xc', timestamp: now - 2000 }),
+    );
+    const last = flagger.ingest(
+      trade({
+        txSuffix: 'b5',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 1000,
+      }),
+    );
+    expect(last).not.toBeNull();
+    expect(last!.reasons).toEqual(expect.arrayContaining(['cluster', 'spree']));
+    expect(last!.spreeSize).toBe(3);
+  });
+
+  it('spree does not re-emit on the immediately following same-wallet trade (dedup)', () => {
+    const flagger = makeFlagger();
+    const now = Date.now();
+    flagger.ingest(
+      trade({
+        txSuffix: 'r1',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 3000,
+      }),
+    );
+    flagger.ingest(
+      trade({
+        txSuffix: 'r2',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 2000,
+      }),
+    );
+    const first = flagger.ingest(
+      trade({
+        txSuffix: 'r3',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 1000,
+      }),
+    );
+    expect(first!.reasons).toContain('spree');
+    const second = flagger.ingest(
+      trade({
+        txSuffix: 'r4',
+        price: 0.5,
+        size: 1100,
+        proxyWallet: '0xwhale',
+        timestamp: now - 500,
+      }),
+    );
+    expect(second?.reasons.includes('spree') ?? false).toBe(false);
   });
 
   it('ignores duplicate transactionHash within the same window (RTDS replay safety)', () => {

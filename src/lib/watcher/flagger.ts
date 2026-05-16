@@ -6,77 +6,112 @@ export type TradeRecord = {
   id: string;
   conditionId: string;
   outcomeIndex: number;
+  side: 'BUY' | 'SELL';
   proxyWallet: string;
   notionalUsd: number;
   timestampMs: number;
 };
 
+export type FlagReason = 'size' | 'cluster' | 'spree';
+
 export type FlagResult = {
-  reasons: ('size' | 'cluster')[];
+  reasons: FlagReason[];
   severity: 'normal' | 'big';
   clusterKey?: string;
   clusterSize?: number;
+  clusterTotalUsd?: number;
+  spreeKey?: string;
+  spreeSize?: number;
+  spreeTotalUsd?: number;
+  spreeFirstTimestampMs?: number;
 };
 
 export const tradeToRecord = (t: RtdsTrade): TradeRecord => ({
   id: t.transactionHash,
   conditionId: t.conditionId,
   outcomeIndex: t.outcomeIndex,
+  side: t.side,
   proxyWallet: t.proxyWallet,
   notionalUsd: t.price * t.size,
   timestampMs: t.timestamp,
 });
 
 const clusterKeyOf = (r: TradeRecord): string => `${r.conditionId}:${r.outcomeIndex}`;
+const spreeKeyOf = (r: TradeRecord): string =>
+  `${r.proxyWallet}:${r.conditionId}:${r.outcomeIndex}:${r.side}`;
 
 export class Flagger {
+  /** (conditionId, outcomeIndex) → recent trades for cluster detection. */
   private readonly windows = new Map<string, TradeRecord[]>();
+  /** (wallet, conditionId, outcomeIndex, side) → recent trades for spree detection. */
+  private readonly spreeWindows = new Map<string, TradeRecord[]>();
   private readonly emittedClusterAt = new Map<string, number>();
+  private readonly emittedSpreeAt = new Map<string, number>();
 
   constructor(private readonly thresholds = FLAG_THRESHOLDS) {}
 
   /**
-   * Pre-populate cluster windows from persisted trades after a restart so the
-   * detector doesn't go blind for the first windowMs after boot.
+   * Pre-populate cluster + spree windows from persisted trades after a restart
+   * so the detectors don't go blind for the first windowMs after boot.
    *
    * Uses the latest record's timestamp (Polymarket clock) as the "now" reference
-   * — keeps the cluster window in the same clock domain as the trade payloads.
+   * — keeps both windows in the same clock domain as the trade payloads.
    */
   public hydrate(records: TradeRecord[]): void {
     if (records.length === 0) return;
     const latestMs = records.reduce((max, r) => (r.timestampMs > max ? r.timestampMs : max), 0);
-    const cutoff = latestMs - this.thresholds.cluster.windowMs;
+    const clusterCutoff = latestMs - this.thresholds.cluster.windowMs;
+    const spreeCutoff = latestMs - this.thresholds.spree.windowMs;
     for (const r of records) {
-      if (r.timestampMs < cutoff) continue;
-      const key = clusterKeyOf(r);
-      const list = this.windows.get(key) ?? [];
-      if (list.some((existing) => existing.id === r.id)) continue;
-      list.push(r);
-      this.windows.set(key, list);
+      if (r.timestampMs >= clusterCutoff) {
+        const cKey = clusterKeyOf(r);
+        const cList = this.windows.get(cKey) ?? [];
+        if (!cList.some((existing) => existing.id === r.id)) {
+          cList.push(r);
+          this.windows.set(cKey, cList);
+        }
+      }
+      if (r.timestampMs >= spreeCutoff) {
+        const sKey = spreeKeyOf(r);
+        const sList = this.spreeWindows.get(sKey) ?? [];
+        if (!sList.some((existing) => existing.id === r.id)) {
+          sList.push(r);
+          this.spreeWindows.set(sKey, sList);
+        }
+      }
     }
   }
 
   public ingest(trade: RtdsTrade): FlagResult | null {
     const record = tradeToRecord(trade);
-    const key = clusterKeyOf(record);
-    // Use the trade's own payload timestamp as the "now" reference for the
-    // cluster window. Previously prune used Date.now() (local clock) while
-    // entries carried Polymarket's clock — under skew the window pruned
-    // either too aggressively or too late.
+    const cKey = clusterKeyOf(record);
+    const sKey = spreeKeyOf(record);
+    // Use the trade's own payload timestamp as the "now" reference. Previously
+    // prune used Date.now() (local clock) while entries carried Polymarket's
+    // clock — under skew the window pruned too aggressively or too late.
     const nowMs = record.timestampMs;
 
-    const list = this.prune(key, nowMs);
+    const cList = this.pruneFrom(this.windows, cKey, nowMs, this.thresholds.cluster.windowMs);
     // RTDS can replay a transactionHash on reconnect or initial snapshot —
-    // don't double-count the same trade in the cluster window. Persist the
-    // pruned list either way so expired entries don't linger across dup floods.
-    if (list.some((r) => r.id === record.id)) {
-      this.windows.set(key, list);
+    // don't double-count the same trade. Persist the pruned list either way so
+    // expired entries don't linger across dup floods.
+    if (cList.some((r) => r.id === record.id)) {
+      this.windows.set(cKey, cList);
       return null;
     }
-    list.push(record);
-    this.windows.set(key, list);
+    cList.push(record);
+    this.windows.set(cKey, cList);
 
-    const reasons: ('size' | 'cluster')[] = [];
+    const sList = this.pruneFrom(this.spreeWindows, sKey, nowMs, this.thresholds.spree.windowMs);
+    // The cluster dedup above already returned null for replays, so we never
+    // reach here with a duplicate. But defend the spree window too in case
+    // hydrate seeded a tx that then arrives live.
+    if (!sList.some((r) => r.id === record.id)) {
+      sList.push(record);
+      this.spreeWindows.set(sKey, sList);
+    }
+
+    const reasons: FlagReason[] = [];
     let severity: 'normal' | 'big' = 'normal';
 
     if (
@@ -87,28 +122,44 @@ export class Flagger {
       if (record.notionalUsd >= this.thresholds.bigTradeUsd) severity = 'big';
     }
 
-    const cluster = this.evaluateCluster(key, list, record, nowMs);
+    const result: FlagResult = { reasons, severity };
+
+    const cluster = this.evaluateCluster(cKey, cList, record, nowMs);
     if (cluster) {
       reasons.push('cluster');
-      // Severity is the OR of the two big-trade signals: either the individual
-      // trade ≥ bigTradeUsd (already evaluated above) OR the cluster total
-      // ≥ bigTradeUsd. We must evaluate this even when `size` also fired,
-      // otherwise a $2k trade inside a $15k cluster stays at severity:"normal".
-      if (severity !== 'big') {
-        const totalUsd = list.reduce((sum, r) => sum + r.notionalUsd, 0);
-        if (totalUsd >= this.thresholds.bigTradeUsd) severity = 'big';
+      result.clusterKey = cKey;
+      result.clusterSize = cluster.size;
+      result.clusterTotalUsd = cluster.totalUsd;
+      if (severity !== 'big' && cluster.totalUsd >= this.thresholds.bigTradeUsd) {
+        severity = 'big';
       }
-      return { reasons, severity, clusterKey: key, clusterSize: cluster.size };
+    }
+
+    const spree = this.evaluateSpree(sKey, sList, record, nowMs);
+    if (spree) {
+      reasons.push('spree');
+      result.spreeKey = sKey;
+      result.spreeSize = spree.size;
+      result.spreeTotalUsd = spree.totalUsd;
+      result.spreeFirstTimestampMs = spree.firstTimestampMs;
+      if (severity !== 'big' && spree.totalUsd >= this.thresholds.bigTradeUsd) {
+        severity = 'big';
+      }
     }
 
     if (reasons.length === 0) return null;
-    return { reasons, severity };
+    result.severity = severity;
+    return result;
   }
 
-  private prune(key: string, nowMs: number): TradeRecord[] {
-    const cutoff = nowMs - this.thresholds.cluster.windowMs;
-    const list = (this.windows.get(key) ?? []).filter((r) => r.timestampMs >= cutoff);
-    return list;
+  private pruneFrom(
+    map: Map<string, TradeRecord[]>,
+    key: string,
+    nowMs: number,
+    windowMs: number,
+  ): TradeRecord[] {
+    const cutoff = nowMs - windowMs;
+    return (map.get(key) ?? []).filter((r) => r.timestampMs >= cutoff);
   }
 
   private evaluateCluster(
@@ -116,7 +167,7 @@ export class Flagger {
     list: TradeRecord[],
     newest: TradeRecord,
     nowMs: number,
-  ): { size: number } | null {
+  ): { size: number; totalUsd: number } | null {
     const { minTrades, minTotalUsd, sameBuyerWeight, windowMs } = this.thresholds.cluster;
 
     const buyerCounts = new Map<string, number>();
@@ -144,6 +195,33 @@ export class Flagger {
     if (!windowFresh && !sameBuyerExisting) return null;
 
     this.emittedClusterAt.set(key, nowMs);
-    return { size: list.length };
+    return { size: list.length, totalUsd };
+  }
+
+  private evaluateSpree(
+    key: string,
+    list: TradeRecord[],
+    _newest: TradeRecord,
+    nowMs: number,
+  ): { size: number; totalUsd: number; firstTimestampMs: number } | null {
+    const { minTrades, minTotalUsd, windowMs } = this.thresholds.spree;
+
+    if (list.length < minTrades) return null;
+    let totalUsd = 0;
+    let firstTimestampMs = Number.POSITIVE_INFINITY;
+    for (const r of list) {
+      totalUsd += r.notionalUsd;
+      if (r.timestampMs < firstTimestampMs) firstTimestampMs = r.timestampMs;
+    }
+    if (totalUsd < minTotalUsd) return null;
+
+    // Re-emit dedup: don't surface the same spree more than once per window —
+    // every subsequent trade from the same wallet keeps adding to the streak
+    // visually via spreeSize, but only emits a new flag once the window resets.
+    const lastEmitted = this.emittedSpreeAt.get(key) ?? 0;
+    if (nowMs - lastEmitted < windowMs) return null;
+
+    this.emittedSpreeAt.set(key, nowMs);
+    return { size: list.length, totalUsd, firstTimestampMs };
   }
 }

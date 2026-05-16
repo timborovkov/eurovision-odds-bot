@@ -34,15 +34,18 @@ const config: Config = {
           '100%': { backgroundColor: 'transparent' },
         },
         tickerIn: {
+          // Long dwell + brief fade-in/out at the edges. Total duration is
+          // 30s (matches TICKER.pillTtlMs); the pill spends ~96% of its life
+          // fully visible and just eases at the start and end.
           '0%': { opacity: '0', transform: 'translateY(-4px)' },
-          '15%': { opacity: '1', transform: 'translateY(0)' },
-          '85%': { opacity: '1', transform: 'translateY(0)' },
+          '3%': { opacity: '1', transform: 'translateY(0)' },
+          '95%': { opacity: '1', transform: 'translateY(0)' },
           '100%': { opacity: '0', transform: 'translateY(-2px)' },
         },
       },
       animation: {
         flashIn: 'flashIn 1.6s ease-out 1',
-        tickerIn: 'tickerIn 6s ease-in-out 1 forwards',
+        tickerIn: 'tickerIn 30s ease-in-out 1 forwards',
       },
     },
   },

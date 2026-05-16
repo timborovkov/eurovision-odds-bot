@@ -121,6 +121,7 @@ async function hydrateFlagger(target: Flagger): Promise<void> {
       id: true,
       conditionId: true,
       outcomeIndex: true,
+      side: true,
       proxyWallet: true,
       notionalUsd: true,
       timestamp: true,
@@ -131,6 +132,7 @@ async function hydrateFlagger(target: Flagger): Promise<void> {
     id: r.id,
     conditionId: r.conditionId,
     outcomeIndex: r.outcomeIndex,
+    side: r.side === 'SELL' ? 'SELL' : 'BUY',
     proxyWallet: r.proxyWallet,
     notionalUsd: r.notionalUsd,
     timestampMs: r.timestamp.getTime(),
@@ -166,6 +168,10 @@ const buildFeedItem = (
   severity: flag.severity,
   clusterKey: flag.clusterKey ?? null,
   clusterSize: flag.clusterSize ?? null,
+  clusterTotalUsd: flag.clusterTotalUsd ?? null,
+  spreeSize: flag.spreeSize ?? null,
+  spreeTotalUsd: flag.spreeTotalUsd ?? null,
+  spreeFirstTimestamp: flag.spreeFirstTimestampMs ?? null,
   transactionHash: trade.transactionHash,
 });
 
@@ -243,12 +249,18 @@ async function handleTradeInner(trade: RtdsTrade): Promise<void> {
       type: 'tick',
       data: {
         id: trade.transactionHash,
+        conditionId: trade.conditionId,
         eventSlug: trade.eventSlug,
+        marketSlug: trade.slug,
+        title: ctx?.title ?? trade.title,
         outcome: trade.outcome,
         side: trade.side,
         price: trade.price,
         size: trade.size,
         notionalUsd: notional,
+        proxyWallet: trade.proxyWallet,
+        pseudonym: trade.pseudonym ?? null,
+        name: trade.name ?? null,
         timestamp: trade.timestamp,
       },
     });
@@ -259,22 +271,21 @@ async function handleTradeInner(trade: RtdsTrade): Promise<void> {
 
   const item = buildFeedItem(trade, flag);
 
+  const flaggedFields = {
+    reason: flag.reasons.join('+'),
+    severity: flag.severity,
+    clusterKey: flag.clusterKey ?? null,
+    clusterSize: flag.clusterSize ?? null,
+    clusterTotalUsd: flag.clusterTotalUsd ?? null,
+    spreeSize: flag.spreeSize ?? null,
+    spreeTotalUsd: flag.spreeTotalUsd ?? null,
+    spreeFirstTimestamp: flag.spreeFirstTimestampMs ? new Date(flag.spreeFirstTimestampMs) : null,
+  };
   try {
     await prisma.flaggedTrade.upsert({
       where: { tradeId: trade.transactionHash },
-      create: {
-        tradeId: trade.transactionHash,
-        reason: flag.reasons.join('+'),
-        severity: flag.severity,
-        clusterKey: flag.clusterKey ?? null,
-        clusterSize: flag.clusterSize ?? null,
-      },
-      update: {
-        reason: flag.reasons.join('+'),
-        severity: flag.severity,
-        clusterKey: flag.clusterKey ?? null,
-        clusterSize: flag.clusterSize ?? null,
-      },
+      create: { tradeId: trade.transactionHash, ...flaggedFields },
+      update: flaggedFields,
     });
   } catch (err) {
     console.warn('[watcher] flagged upsert failed', err);

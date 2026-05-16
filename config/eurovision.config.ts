@@ -53,6 +53,17 @@ export const FLAG_THRESHOLDS = {
     /** Each same-proxyWallet trade is weighted this many times. */
     sameBuyerWeight: 3,
   },
+
+  /**
+   * Spree = one wallet accumulating on the same (conditionId, outcomeIndex, side)
+   * inside the window. Distinct from cluster because cluster is a crowd signal;
+   * spree is one trader's conviction and tends to lead the move.
+   */
+  spree: {
+    windowMs: 10 * 60_000,
+    minTrades: 3,
+    minTotalUsd: 5_000,
+  },
 } as const;
 
 export type FlagThresholds = typeof FLAG_THRESHOLDS;
@@ -60,4 +71,8 @@ export type FlagThresholds = typeof FLAG_THRESHOLDS;
 export const TICKER = {
   /** Minimum notional USDC for a trade to appear in the live ticker strip. */
   minNotionalUsd: 50,
+  /** How long each pill stays in the strip before fading out. */
+  pillTtlMs: 30_000,
+  /** Cap on how many pills can show at once (oldest fall off). */
+  maxPills: 20,
 } as const;

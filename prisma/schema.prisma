@@ -42,14 +42,18 @@ model Trade {
 }
 
 model FlaggedTrade {
-  id         String   @id @default(cuid())
-  tradeId    String   @unique
-  trade      Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
-  reason     String
-  severity   String
-  clusterKey String?
-  clusterSize Int?
-  createdAt  DateTime @default(now())
+  id                   String    @id @default(cuid())
+  tradeId              String    @unique
+  trade                Trade     @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  reason               String
+  severity             String
+  clusterKey           String?
+  clusterSize          Int?
+  clusterTotalUsd      Float?
+  spreeSize            Int?
+  spreeTotalUsd        Float?
+  spreeFirstTimestamp  DateTime?
+  createdAt            DateTime  @default(now())
 
   @@index([createdAt])
 }
