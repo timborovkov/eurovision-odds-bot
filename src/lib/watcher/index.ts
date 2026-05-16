@@ -6,7 +6,7 @@ import { resolveEvent } from '@/lib/polymarket/gamma';
 
 import { broker, type FlaggedFeedItem } from './broker';
 import { Flagger, type TradeRecord } from './flagger';
-import { RtdsWatcher, type RtdsTrade } from './rtds';
+import { RtdsWatcher, type RtdsCounters, type RtdsTrade } from './rtds';
 
 type WatcherState = {
   started: boolean;
@@ -240,6 +240,17 @@ export type WatcherStats = {
   status: ReturnType<RtdsWatcher['getStatus']> | 'NOT_STARTED';
   marketsResolved: number;
   subscribedSlugs: string[];
+  counters: RtdsCounters;
+};
+
+const EMPTY_COUNTERS: RtdsCounters = {
+  rawMessages: 0,
+  tradeMessages: 0,
+  filteredOut: 0,
+  dropped: 0,
+  lastRawAt: null,
+  lastTradeAt: null,
+  recentDrops: [],
 };
 
 export function getWatcherStats(): WatcherStats {
@@ -248,6 +259,7 @@ export function getWatcherStats(): WatcherStats {
     status: state.watcher?.getStatus() ?? 'NOT_STARTED',
     marketsResolved: conditionContext.size,
     subscribedSlugs: state.subscribedSlugs,
+    counters: state.watcher?.getCounters() ?? EMPTY_COUNTERS,
   };
 }
 
