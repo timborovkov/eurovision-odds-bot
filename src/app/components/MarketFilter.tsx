@@ -68,12 +68,22 @@ export function MarketFilter({ markets, selected, onChange }: Props) {
   );
 }
 
-function humanizeSlug(slug: string): string {
-  return (
-    slug
-      .replace(/^eurovision-?2026-?/, '')
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase())
-      .trim() || slug
-  );
+/**
+ * Strip the noise tokens ("eurovision", "2026") that appear in every configured
+ * slug — they're not informative on filter chips. Polymarket uses both
+ * `eurovision-2026-<thing>` and `eurovision-<thing>-2026` (plus
+ * `eurovision-winner-2026`) shapes, so we remove the tokens anywhere they
+ * appear, then collapse stray dashes.
+ */
+export function humanizeSlug(slug: string): string {
+  const stripped = slug
+    .replace(/\beurovision\b/gi, '')
+    .replace(/\b2026\b/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (stripped.length === 0) return slug;
+  return stripped
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
 }

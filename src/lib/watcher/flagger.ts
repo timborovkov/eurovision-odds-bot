@@ -78,7 +78,11 @@ export class Flagger {
     const cluster = this.evaluateCluster(key, list, record);
     if (cluster) {
       reasons.push('cluster');
-      if (reasons.includes('size') === false) {
+      // Severity is the OR of the two big-trade signals: either the individual
+      // trade ≥ bigTradeUsd (already evaluated above) OR the cluster total
+      // ≥ bigTradeUsd. We must evaluate this even when `size` also fired,
+      // otherwise a $2k trade inside a $15k cluster stays at severity:"normal".
+      if (severity !== 'big') {
         const totalUsd = list.reduce((sum, r) => sum + r.notionalUsd, 0);
         if (totalUsd >= this.thresholds.bigTradeUsd) severity = 'big';
       }

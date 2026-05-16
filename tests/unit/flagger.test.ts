@@ -140,6 +140,37 @@ describe('Flagger', () => {
     expect(result).toBeNull();
   });
 
+  it('escalates to "big" when cluster total crosses bigTradeUsd, even if size also fired', () => {
+    // A single $2k trade trips `size` (≥$1k) but is below `bigTradeUsd` ($10k).
+    // Stacked behind three prior $4.5k trades from distinct buyers, the cluster
+    // total is $15.5k > $10k. The combined flag must surface severity "big",
+    // not "normal".
+    const flagger = new Flagger();
+    const now = Date.now();
+    const seed = [
+      trade({ txSuffix: 'p1', price: 0.5, size: 9000, proxyWallet: '0xa', timestamp: now - 4000 }),
+      trade({ txSuffix: 'p2', price: 0.5, size: 9000, proxyWallet: '0xb', timestamp: now - 3000 }),
+      trade({ txSuffix: 'p3', price: 0.5, size: 9000, proxyWallet: '0xc', timestamp: now - 2000 }),
+    ];
+    // Each seed: notional = $4,500 (fires size, not big). 3 distinct buyers +
+    // the final trade trips weighted count >=4 and total >= minTotalUsd.
+    for (const t of seed) flagger.ingest(t);
+
+    const final = flagger.ingest(
+      trade({
+        txSuffix: 'final',
+        price: 0.5,
+        size: 4000, // notional $2,000 → fires size, NOT big on its own
+        proxyWallet: '0xd',
+        timestamp: now - 1000,
+      }),
+    );
+
+    expect(final).not.toBeNull();
+    expect(final!.reasons).toEqual(expect.arrayContaining(['size', 'cluster']));
+    expect(final!.severity).toBe('big');
+  });
+
   it('ignores duplicate transactionHash within the same window (RTDS replay safety)', () => {
     const flagger = new Flagger();
     const big = trade({ txSuffix: 'dup', price: 0.5, size: 25_000 });
