@@ -37,11 +37,11 @@ export const EUROVISION_MARKETS: MarketRef[] = [
 
 export const FLAG_THRESHOLDS = {
   /** Notional in USDC = price * size. Any trade at/above this fires a flag. */
-  singleTradeUsd: 1_000,
+  singleTradeUsd: 5_000,
   /** Raw share count. Either rule (USD or shares) is sufficient. */
-  singleTradeShares: 5_000,
+  singleTradeShares: 25_000,
   /** Above this, severity = "big" — louder sound + bold Telegram. */
-  bigTradeUsd: 10_000,
+  bigTradeUsd: 50_000,
 
   cluster: {
     /** Rolling window for cluster detection. */
@@ -49,7 +49,7 @@ export const FLAG_THRESHOLDS = {
     /** Minimum weighted trade count inside the window. */
     minTrades: 4,
     /** Minimum summed notional USDC inside the window. */
-    minTotalUsd: 1_500,
+    minTotalUsd: 7_500,
     /** Each same-proxyWallet trade is weighted this many times. */
     sameBuyerWeight: 3,
   },

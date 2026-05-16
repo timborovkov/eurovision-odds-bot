@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { Flagger } from '@/lib/watcher/flagger';
 import type { RtdsTrade } from '@/lib/watcher/rtds';
 
+// Tests use explicit small thresholds so the suite stays valid when
+// production thresholds in config/eurovision.config.ts are tuned for
+// real Polymarket volume. The shape mirrors FLAG_THRESHOLDS.
+const TEST_THRESHOLDS = {
+  singleTradeUsd: 1_000,
+  singleTradeShares: 5_000,
+  bigTradeUsd: 10_000,
+  cluster: {
+    windowMs: 10 * 60_000,
+    minTrades: 4,
+    minTotalUsd: 1_500,
+    sameBuyerWeight: 3,
+  },
+} as const;
+
+const makeFlagger = (): Flagger => new Flagger(TEST_THRESHOLDS);
+
 const baseTrade: RtdsTrade = {
   asset: 'asset-1',
   conditionId: '0xabc',
@@ -30,13 +47,13 @@ const trade = (overrides: Partial<RtdsTrade> & { txSuffix: string }): RtdsTrade 
 
 describe('Flagger', () => {
   it('ignores small trades', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const result = flagger.ingest(trade({ txSuffix: 'small', price: 0.5, size: 10 }));
     expect(result).toBeNull();
   });
 
   it('flags a single trade above singleTradeUsd', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     // notional = 0.6 * 2000 = $1,200 > default singleTradeUsd $1,000
     const result = flagger.ingest(trade({ txSuffix: 'large', price: 0.6, size: 2000 }));
     expect(result).not.toBeNull();
@@ -45,7 +62,7 @@ describe('Flagger', () => {
   });
 
   it('flags a single trade above bigTradeUsd as "big" severity', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     // notional = 0.5 * 25000 = $12,500 > default bigTradeUsd $10,000
     const result = flagger.ingest(trade({ txSuffix: 'big', price: 0.5, size: 25_000 }));
     expect(result).not.toBeNull();
@@ -57,7 +74,7 @@ describe('Flagger', () => {
     // Per-trade notional well below $1,000 single-trade threshold but the cluster
     // total ($2,000) exceeds the cluster minTotalUsd ($1,500), and weighted count
     // (4 distinct buyers @ weight 1 each) meets minTrades=4.
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const now = Date.now();
     const trades = [
       trade({ txSuffix: 'c1', price: 0.5, size: 1000, proxyWallet: '0xa', timestamp: now - 4000 }),
@@ -82,7 +99,7 @@ describe('Flagger', () => {
   it('weights same-buyer trades heavily so 2 trades from same wallet trip the cluster rule', () => {
     // 2 trades from same wallet × sameBuyerWeight(3) = 6 weighted >= minTrades(4).
     // Two trades of $800 each = $1,600 total > minTotalUsd $1,500.
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const now = Date.now();
     const t1 = trade({
       txSuffix: 'sb1',
@@ -105,7 +122,7 @@ describe('Flagger', () => {
   });
 
   it('does NOT cluster trades on a different outcome', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const now = Date.now();
     flagger.ingest(
       trade({
@@ -145,7 +162,7 @@ describe('Flagger', () => {
     // Stacked behind three prior $4.5k trades from distinct buyers, the cluster
     // total is $15.5k > $10k. The combined flag must surface severity "big",
     // not "normal".
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const now = Date.now();
     const seed = [
       trade({ txSuffix: 'p1', price: 0.5, size: 9000, proxyWallet: '0xa', timestamp: now - 4000 }),
@@ -172,7 +189,7 @@ describe('Flagger', () => {
   });
 
   it('ignores duplicate transactionHash within the same window (RTDS replay safety)', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const big = trade({ txSuffix: 'dup', price: 0.5, size: 25_000 });
     const first = flagger.ingest(big);
     expect(first).not.toBeNull();
@@ -188,7 +205,7 @@ describe('Flagger', () => {
     // If the prune logic used Date.now() the seed trades would all be
     // pruned before the fresh trade arrives and no cluster would form;
     // using the trade's own timestamp keeps the window intact.
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const pmNow = Date.now() - 24 * 60 * 60_000;
     const seedTimes = [pmNow - 6000, pmNow - 4000, pmNow - 2000];
     for (let i = 0; i < seedTimes.length; i++) {
@@ -216,7 +233,7 @@ describe('Flagger', () => {
   });
 
   it('hydrate seeds the cluster window from past records', () => {
-    const flagger = new Flagger();
+    const flagger = makeFlagger();
     const now = Date.now();
     flagger.hydrate([
       {
