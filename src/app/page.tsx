@@ -127,7 +127,17 @@ export default function Page() {
         if (cancelled) return;
         if (recentRes.ok) {
           const data = (await recentRes.json()) as RecentResponse;
-          setItems(mapRecent(data));
+          const hydrated = mapRecent(data);
+          // Merge with any items that arrived via SSE before hydrate
+          // completed — a plain setItems(hydrated) would clobber them.
+          setItems((prev) => {
+            if (prev.length === 0) return hydrated;
+            const seen = new Set(hydrated.map((it) => it.id));
+            const sseOnly = prev.filter((it) => !seen.has(it.id));
+            return [...sseOnly, ...hydrated]
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .slice(0, MAX_FEED_ITEMS);
+          });
         }
         if (marketsRes.ok) {
           const data = (await marketsRes.json()) as MarketsResponse;

@@ -27,8 +27,6 @@ export const tradeToRecord = (t: RtdsTrade): TradeRecord => ({
   timestampMs: t.timestamp,
 });
 
-export const computeNotional = (t: RtdsTrade): number => t.price * t.size;
-
 const clusterKeyOf = (r: TradeRecord): string => `${r.conditionId}:${r.outcomeIndex}`;
 
 export class Flagger {
