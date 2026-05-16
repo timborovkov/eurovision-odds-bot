@@ -156,8 +156,17 @@ async function handleTrade(trade: RtdsTrade): Promise<void> {
   const notional = trade.price * trade.size;
   const ts = new Date(trade.timestamp);
 
+  // Diagnostic: log every trade's raw price/size/computed notional so we can
+  // grep Railway logs by transactionHash and verify what was actually stored
+  // matches what the SSE/ticker emitted. Remove once notional drift is resolved.
+  const shortTx = trade.transactionHash.slice(0, 10);
+  console.log(
+    `[trade] tx=${shortTx} ${trade.side} price=${trade.price} size=${trade.size} ` +
+      `notional=$${notional.toFixed(2)} :: ${trade.outcome}`,
+  );
+
   try {
-    await prisma.trade.upsert({
+    const written = await prisma.trade.upsert({
       where: { id: trade.transactionHash },
       create: {
         id: trade.transactionHash,
@@ -179,6 +188,15 @@ async function handleTrade(trade: RtdsTrade): Promise<void> {
       },
       update: {},
     });
+
+    // Echo back what SQLite actually persisted — catches any precision loss or
+    // schema mismatch between the in-memory value and the stored column.
+    if (Math.abs(written.notionalUsd - notional) > 0.01) {
+      console.warn(
+        `[trade] STORED MISMATCH tx=${shortTx} ` +
+          `wrote=$${notional.toFixed(4)} read-back=$${written.notionalUsd.toFixed(4)}`,
+      );
+    }
   } catch (err) {
     console.warn('[watcher] trade upsert failed', err);
     return;
