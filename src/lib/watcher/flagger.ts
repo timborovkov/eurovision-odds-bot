@@ -1,6 +1,10 @@
 import { FLAG_THRESHOLDS } from '@config/eurovision.config';
 
+import { type FlagReason } from '@/lib/flagReason';
+
 import type { RtdsTrade } from './rtds';
+
+export type { FlagReason };
 
 export type TradeRecord = {
   id: string;
@@ -11,8 +15,6 @@ export type TradeRecord = {
   notionalUsd: number;
   timestampMs: number;
 };
-
-export type FlagReason = 'size' | 'cluster' | 'spree';
 
 export type FlagResult = {
   reasons: FlagReason[];

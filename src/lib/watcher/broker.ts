@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events';
 
+import { type FlagReason } from '@/lib/flagReason';
+
 import type { ConnectionState } from './rtds';
 
-export type FlagReason = 'size' | 'cluster' | 'spree';
+export type { FlagReason };
 
 export type FlaggedFeedItem = {
   id: string;

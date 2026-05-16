@@ -155,34 +155,41 @@ const fillIdFor = (trade: RtdsTrade): string =>
 const buildFeedItem = (
   trade: RtdsTrade,
   flag: NonNullable<ReturnType<Flagger['ingest']>>,
-): FlaggedFeedItem => ({
-  id: fillIdFor(trade),
-  tradeId: fillIdFor(trade),
-  conditionId: trade.conditionId,
-  eventSlug: trade.eventSlug,
-  marketSlug: trade.slug,
-  title: trade.title,
-  question: conditionContext.get(trade.conditionId)?.question ?? trade.title,
-  outcome: trade.outcome,
-  outcomeIndex: trade.outcomeIndex,
-  side: trade.side,
-  price: trade.price,
-  size: trade.size,
-  notionalUsd: trade.price * trade.size,
-  proxyWallet: trade.proxyWallet,
-  pseudonym: trade.pseudonym ?? null,
-  name: trade.name ?? null,
-  timestamp: trade.timestamp,
-  reasons: flag.reasons,
-  severity: flag.severity,
-  clusterKey: flag.clusterKey ?? null,
-  clusterSize: flag.clusterSize ?? null,
-  clusterTotalUsd: flag.clusterTotalUsd ?? null,
-  spreeSize: flag.spreeSize ?? null,
-  spreeTotalUsd: flag.spreeTotalUsd ?? null,
-  spreeFirstTimestamp: flag.spreeFirstTimestampMs ?? null,
-  transactionHash: trade.transactionHash,
-});
+): FlaggedFeedItem => {
+  const ctx = conditionContext.get(trade.conditionId);
+  return {
+    id: fillIdFor(trade),
+    tradeId: fillIdFor(trade),
+    conditionId: trade.conditionId,
+    eventSlug: trade.eventSlug,
+    marketSlug: trade.slug,
+    // Prefer Gamma's resolved event title — matches what the DB upsert persists
+    // (`ctx?.title ?? trade.title`). Without this, SSE-streamed items could show
+    // the raw RTDS title (which defaults to '' per the zod schema) while the
+    // same trade hydrated from the DB shows the real Gamma title.
+    title: ctx?.title ?? trade.title,
+    question: ctx?.question ?? trade.title,
+    outcome: trade.outcome,
+    outcomeIndex: trade.outcomeIndex,
+    side: trade.side,
+    price: trade.price,
+    size: trade.size,
+    notionalUsd: trade.price * trade.size,
+    proxyWallet: trade.proxyWallet,
+    pseudonym: trade.pseudonym ?? null,
+    name: trade.name ?? null,
+    timestamp: trade.timestamp,
+    reasons: flag.reasons,
+    severity: flag.severity,
+    clusterKey: flag.clusterKey ?? null,
+    clusterSize: flag.clusterSize ?? null,
+    clusterTotalUsd: flag.clusterTotalUsd ?? null,
+    spreeSize: flag.spreeSize ?? null,
+    spreeTotalUsd: flag.spreeTotalUsd ?? null,
+    spreeFirstTimestamp: flag.spreeFirstTimestampMs ?? null,
+    transactionHash: trade.transactionHash,
+  };
+};
 
 async function handleTrade(trade: RtdsTrade): Promise<void> {
   // Outer guard: rtds.ts void-calls this. Any unhandled rejection here would

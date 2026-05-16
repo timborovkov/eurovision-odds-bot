@@ -1,4 +1,6 @@
-export type FlagReason = 'size' | 'cluster' | 'spree';
+import { type FlagReason } from '@/lib/flagReason';
+
+export type { FlagReason };
 
 export type FlaggedItem = {
   id: string;
