@@ -6,22 +6,22 @@ describe('FeedBroker', () => {
   it('delivers published events to active subscribers', () => {
     const received: FeedEvent[] = [];
     const unsubscribe = broker.subscribe((ev) => received.push(ev));
-    broker.publish({ type: 'heartbeat', ts: 1 });
-    broker.publish({ type: 'heartbeat', ts: 2 });
+    broker.publish({ type: 'status', status: 'CONNECTED' });
+    broker.publish({ type: 'status', status: 'DISCONNECTED' });
     unsubscribe();
     expect(received).toEqual([
-      { type: 'heartbeat', ts: 1 },
-      { type: 'heartbeat', ts: 2 },
+      { type: 'status', status: 'CONNECTED' },
+      { type: 'status', status: 'DISCONNECTED' },
     ]);
   });
 
   it('stops delivering events after unsubscribe', () => {
     const received: FeedEvent[] = [];
     const unsubscribe = broker.subscribe((ev) => received.push(ev));
-    broker.publish({ type: 'heartbeat', ts: 1 });
+    broker.publish({ type: 'status', status: 'CONNECTED' });
     unsubscribe();
-    broker.publish({ type: 'heartbeat', ts: 2 });
-    expect(received).toEqual([{ type: 'heartbeat', ts: 1 }]);
+    broker.publish({ type: 'status', status: 'DISCONNECTED' });
+    expect(received).toEqual([{ type: 'status', status: 'CONNECTED' }]);
   });
 
   it('caches the last status event for late subscribers', () => {
@@ -37,7 +37,9 @@ describe('FeedBroker', () => {
       throw new Error('subscriber boom');
     });
     const okUnsub = broker.subscribe((ev) => ok.push(ev));
-    expect(() => broker.publish({ type: 'heartbeat', ts: 3 })).toThrow('subscriber boom');
+    expect(() => broker.publish({ type: 'status', status: 'CONNECTED' })).toThrow(
+      'subscriber boom',
+    );
     // Even when one throws, the second was registered after — node's EventEmitter
     // calls listeners in order and propagates the first throw. Document the contract.
     throwingUnsub();

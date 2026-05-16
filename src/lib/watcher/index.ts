@@ -170,6 +170,18 @@ const buildFeedItem = (
 });
 
 async function handleTrade(trade: RtdsTrade): Promise<void> {
+  // Outer guard: rtds.ts void-calls this. Any unhandled rejection here would
+  // be a process-level UnhandledPromiseRejection on Node 15+ (default policy
+  // is throw). Catch everything so one bad trade can never take the watcher
+  // down — log the offender's tx hash for follow-up.
+  try {
+    await handleTradeInner(trade);
+  } catch (err) {
+    console.warn(`[watcher] handleTrade crashed tx=${trade.transactionHash.slice(0, 10)}`, err);
+  }
+}
+
+async function handleTradeInner(trade: RtdsTrade): Promise<void> {
   if (!state.flagger) return;
   // Some Eurovision events stream child markets we may not have catalogued (new sub-markets
   // appearing late). We still process them — Gamma will fill in metadata next boot.
@@ -325,8 +337,7 @@ export async function startWatcher(): Promise<void> {
     onStatusChange: (status) => broker.publish({ type: 'status', status }),
   });
   state.watcher.start();
-
-  setInterval(() => {
-    broker.publish({ type: 'heartbeat', ts: Date.now() });
-  }, 15_000).unref();
+  // Connection keep-alive is handled by the SSE route's `: keep-alive` comment
+  // every 20s — no client listens for broker heartbeats and forwarding them
+  // would just burn bandwidth per connected tab.
 }

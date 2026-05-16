@@ -41,8 +41,7 @@ export type TickFeedItem = {
 export type FeedEvent =
   | { type: 'flagged'; data: FlaggedFeedItem }
   | { type: 'tick'; data: TickFeedItem }
-  | { type: 'status'; status: ConnectionState }
-  | { type: 'heartbeat'; ts: number };
+  | { type: 'status'; status: ConnectionState };
 
 class FeedBroker extends EventEmitter {
   private lastStatus: ConnectionState = 'DISCONNECTED';
