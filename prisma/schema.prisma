@@ -17,27 +17,33 @@ model Market {
 }
 
 model Trade {
-  id           String   @id
-  conditionId  String
-  assetId      String
-  outcomeIndex Int
-  outcome      String
-  side         String
-  price        Float
-  size         Float
-  notionalUsd  Float
-  proxyWallet  String
-  pseudonym    String?
-  name         String?
-  eventSlug    String
-  marketSlug   String
-  title        String
-  timestamp    DateTime
-  createdAt    DateTime @default(now())
-  flagged      FlaggedTrade?
+  // Composite per-fill key: a single Polymarket on-chain tx can fill against
+  // multiple makers at different (asset, side, price, size), arriving on RTDS
+  // as separate events. Keying by transactionHash alone collapsed sibling
+  // fills into one row. id is now `<txHash>:<asset>:<side>:<price>:<size>`.
+  id              String   @id
+  transactionHash String?
+  conditionId     String
+  assetId         String
+  outcomeIndex    Int
+  outcome         String
+  side            String
+  price           Float
+  size            Float
+  notionalUsd     Float
+  proxyWallet     String
+  pseudonym       String?
+  name            String?
+  eventSlug       String
+  marketSlug      String
+  title           String
+  timestamp       DateTime
+  createdAt       DateTime @default(now())
+  flagged         FlaggedTrade?
 
   @@index([conditionId, timestamp])
   @@index([proxyWallet, timestamp])
+  @@index([transactionHash])
   @@index([timestamp])
 }
 

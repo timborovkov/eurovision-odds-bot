@@ -143,12 +143,21 @@ async function hydrateFlagger(target: Flagger): Promise<void> {
   }
 }
 
+/**
+ * A single Polymarket on-chain tx can fill against multiple makers — different
+ * outcomes (asset), sides, prices, and sizes. RTDS emits one event per fill.
+ * The canonical per-fill identity is the tx hash plus the dimensions Polymarket
+ * actually varies between sibling fills.
+ */
+const fillIdFor = (trade: RtdsTrade): string =>
+  `${trade.transactionHash}:${trade.asset}:${trade.side}:${trade.price}:${trade.size}`;
+
 const buildFeedItem = (
   trade: RtdsTrade,
   flag: NonNullable<ReturnType<Flagger['ingest']>>,
 ): FlaggedFeedItem => ({
-  id: trade.transactionHash,
-  tradeId: trade.transactionHash,
+  id: fillIdFor(trade),
+  tradeId: fillIdFor(trade),
   conditionId: trade.conditionId,
   eventSlug: trade.eventSlug,
   marketSlug: trade.slug,
@@ -194,21 +203,15 @@ async function handleTradeInner(trade: RtdsTrade): Promise<void> {
   const ctx = conditionContext.get(trade.conditionId);
   const notional = trade.price * trade.size;
   const ts = new Date(trade.timestamp);
-
-  // Diagnostic: log every trade's raw price/size/computed notional so we can
-  // grep Railway logs by transactionHash and verify what was actually stored
-  // matches what the SSE/ticker emitted. Remove once notional drift is resolved.
+  const fillId = fillIdFor(trade);
   const shortTx = trade.transactionHash.slice(0, 10);
-  console.log(
-    `[trade] tx=${shortTx} ${trade.side} price=${trade.price} size=${trade.size} ` +
-      `notional=$${notional.toFixed(2)} :: ${trade.outcome}`,
-  );
 
   try {
-    const written = await prisma.trade.upsert({
-      where: { id: trade.transactionHash },
+    await prisma.trade.upsert({
+      where: { id: fillId },
       create: {
-        id: trade.transactionHash,
+        id: fillId,
+        transactionHash: trade.transactionHash,
         conditionId: trade.conditionId,
         assetId: trade.asset,
         outcomeIndex: trade.outcomeIndex,
@@ -227,28 +230,19 @@ async function handleTradeInner(trade: RtdsTrade): Promise<void> {
       },
       update: {},
     });
-
-    // Echo back what SQLite actually persisted — catches any precision loss or
-    // schema mismatch between the in-memory value and the stored column.
-    if (Math.abs(written.notionalUsd - notional) > 0.01) {
-      console.warn(
-        `[trade] STORED MISMATCH tx=${shortTx} ` +
-          `wrote=$${notional.toFixed(4)} read-back=$${written.notionalUsd.toFixed(4)}`,
-      );
-    }
   } catch (err) {
-    console.warn('[watcher] trade upsert failed', err);
+    console.warn(`[watcher] trade upsert failed tx=${shortTx}`, err);
     return;
   }
 
   // Dedupe ticker emits across RTDS replays. The flagger has its own dedup
   // for the cluster window; the ticker needs its own because it fires before
   // the flagger sees the trade and has no cluster window to reference.
-  if (notional >= TICKER.minNotionalUsd && markTickerSeen(trade.transactionHash)) {
+  if (notional >= TICKER.minNotionalUsd && markTickerSeen(fillId)) {
     broker.publish({
       type: 'tick',
       data: {
-        id: trade.transactionHash,
+        id: fillId,
         conditionId: trade.conditionId,
         eventSlug: trade.eventSlug,
         marketSlug: trade.slug,
@@ -283,8 +277,8 @@ async function handleTradeInner(trade: RtdsTrade): Promise<void> {
   };
   try {
     await prisma.flaggedTrade.upsert({
-      where: { tradeId: trade.transactionHash },
-      create: { tradeId: trade.transactionHash, ...flaggedFields },
+      where: { tradeId: fillId },
+      create: { tradeId: fillId, ...flaggedFields },
       update: flaggedFields,
     });
   } catch (err) {

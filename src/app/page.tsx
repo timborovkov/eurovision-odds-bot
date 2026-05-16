@@ -30,6 +30,7 @@ type RecentResponse = {
     createdAt: string;
     trade: {
       id: string;
+      transactionHash: string;
       conditionId: string;
       eventSlug: string;
       marketSlug: string;
@@ -60,10 +61,10 @@ const parseReasons = (reason: string): FlagReason[] => {
 };
 
 const mapRecent = (r: RecentResponse): FlaggedItem[] =>
-  // `id` MUST equal `transactionHash` so it matches the SSE payload from
-  // buildFeedItem — otherwise the same trade arriving via hydrate + SSE
-  // (race on first paint) would render twice. row.tradeId is the FK to
-  // Trade.id which is the transactionHash.
+  // `id` MUST equal what SSE's buildFeedItem emits as `id` (the per-fill key,
+  // tx:asset:side:price:size) — otherwise the same fill arriving via both the
+  // hydrate API and the SSE stream renders twice on first paint. row.tradeId
+  // is the FK to Trade.id, which holds that fill key.
   r.flagged.map((row) => ({
     id: row.tradeId,
     tradeId: row.tradeId,
@@ -92,7 +93,7 @@ const mapRecent = (r: RecentResponse): FlaggedItem[] =>
     spreeFirstTimestamp: row.spreeFirstTimestamp
       ? new Date(row.spreeFirstTimestamp).getTime()
       : null,
-    transactionHash: row.trade.id,
+    transactionHash: row.trade.transactionHash,
   }));
 
 export default function Page() {

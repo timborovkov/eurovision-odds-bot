@@ -32,6 +32,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       createdAt: r.createdAt.toISOString(),
       trade: {
         id: r.trade.id,
+        transactionHash: r.trade.transactionHash ?? r.trade.id,
         conditionId: r.trade.conditionId,
         eventSlug: r.trade.eventSlug,
         marketSlug: r.trade.marketSlug,

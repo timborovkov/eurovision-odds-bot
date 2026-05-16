@@ -26,8 +26,13 @@ export type FlagResult = {
   spreeFirstTimestampMs?: number;
 };
 
+/**
+ * Identity for the cluster/spree windows: per-fill, not per-tx. A Polymarket
+ * tx can fan out to multiple fills with different (asset, side, price, size);
+ * using `transactionHash` alone would drop legitimate sibling fills as dups.
+ */
 export const tradeToRecord = (t: RtdsTrade): TradeRecord => ({
-  id: t.transactionHash,
+  id: `${t.transactionHash}:${t.asset}:${t.side}:${t.price}:${t.size}`,
   conditionId: t.conditionId,
   outcomeIndex: t.outcomeIndex,
   side: t.side,
