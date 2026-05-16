@@ -1,0 +1,55 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Market {
+  conditionId String   @id
+  eventSlug   String
+  marketSlug  String
+  question    String
+  outcomes    String   // JSON-encoded string[]
+  updatedAt   DateTime @updatedAt
+}
+
+model Trade {
+  id           String   @id
+  conditionId  String
+  assetId      String
+  outcomeIndex Int
+  outcome      String
+  side         String
+  price        Float
+  size         Float
+  notionalUsd  Float
+  proxyWallet  String
+  pseudonym    String?
+  name         String?
+  eventSlug    String
+  marketSlug   String
+  title        String
+  timestamp    DateTime
+  createdAt    DateTime @default(now())
+  flagged      FlaggedTrade?
+
+  @@index([conditionId, timestamp])
+  @@index([proxyWallet, timestamp])
+  @@index([timestamp])
+}
+
+model FlaggedTrade {
+  id         String   @id @default(cuid())
+  tradeId    String   @unique
+  trade      Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  reason     String
+  severity   String
+  clusterKey String?
+  clusterSize Int?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
