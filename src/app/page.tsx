@@ -12,6 +12,7 @@ import type { ConnectionState, FlaggedItem, ResolvedMarket } from './types';
 const MAX_FEED_ITEMS = 250;
 const MAX_TICKER_ITEMS = 12;
 const TICKER_TTL_MS = 6000;
+const STALE_TICK_MS = 45_000;
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Eurovision Watch';
 
 type RecentResponse = {
@@ -90,6 +91,9 @@ export default function Page() {
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [markets, setMarkets] = useState<ResolvedMarket[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<MarketFilterValue>(new Set());
+  const mountedAtRef = useRef<number>(Date.now());
+  const [lastTickAt, setLastTickAt] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const sound = useSoundController();
   const soundRef = useRef(sound);
   soundRef.current = sound;
@@ -175,6 +179,7 @@ export default function Page() {
     es.addEventListener('tick', (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent<string>).data) as { data: TickItem };
+        setLastTickAt(Date.now());
         setTickItems((prev) => {
           if (prev.some((p) => p.id === data.data.id)) return prev;
           return [data.data, ...prev].slice(0, MAX_TICKER_ITEMS);
@@ -196,6 +201,17 @@ export default function Page() {
     if (selectedEvents.size === 0) return items;
     return items.filter((i) => selectedEvents.has(i.eventSlug));
   }, [items, selectedEvents]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sinceLastTickMs = now - (lastTickAt ?? mountedAtRef.current);
+  const staleSeconds =
+    status === 'CONNECTED' && sinceLastTickMs > STALE_TICK_MS
+      ? Math.floor(sinceLastTickMs / 1000)
+      : null;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
@@ -221,6 +237,16 @@ export default function Page() {
           </button>
         </div>
       </header>
+
+      {staleSeconds !== null && (
+        <section className="mb-3">
+          <div className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+            Connected, but no trades received in {staleSeconds}s — check{' '}
+            <code className="rounded bg-panel2 px-1 py-0.5 font-mono">/api/health</code> counters
+            (rawMessages / tradeMessages / dropped) for the failure mode.
+          </div>
+        </section>
+      )}
 
       <section className="mb-3">
         <LiveTicker items={tickItems} selectedEvents={selectedEvents} />

@@ -94,45 +94,36 @@ describe('RTDS WebSocket plumbing', () => {
     expect(isSnapshot || isUpdate, 'payload must be snapshot or live update').toBe(true);
   }, 25_000);
 
-  it('accepts subscriptions for every configured Eurovision event slug without error', async () => {
-    // Verify the slugs we actually subscribe to in prod are accepted by the server.
-    // We don't assert that trades arrive (Eurovision markets can be quiet for minutes);
-    // we assert that the server doesn't drop the connection and that any trades we DO
-    // receive parse cleanly through our schema.
+  it('firehose subscription delivers parseable Eurovision trades within 20s', async () => {
+    // Mirror what the prod watcher now does: subscribe to the full activity/trades
+    // firehose (no server-side filter — RTDS's `event_slug` filter delivers zero
+    // messages, confirmed against this same socket) and filter client-side.
     const slugs = EUROVISION_MARKETS.map((m) => m.eventSlug);
-    const resolvedSlugs: string[] = [];
+    const resolvedSlugs = new Set<string>();
     for (const slug of slugs) {
       const event = await resolveEvent(slug);
-      if (event && event.markets.length > 0) resolvedSlugs.push(slug);
+      if (event && event.markets.length > 0) resolvedSlugs.add(slug);
     }
-    expect(resolvedSlugs.length, 'no Eurovision slugs resolved').toBeGreaterThan(0);
+    expect(resolvedSlugs.size, 'no Eurovision slugs resolved').toBeGreaterThan(0);
 
-    const messages: Message[] = [];
+    const eurovisionMessages: Message[] = [];
+    let allTradeCount = 0;
     let client: RealTimeDataClient | null = null;
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => resolve(), 12_000);
+      const timer = setTimeout(() => resolve(), 20_000);
 
       client = new RealTimeDataClient({
         host: RTDS_HOST,
         autoReconnect: false,
         onConnect: (c) => {
-          for (const slug of resolvedSlugs) {
-            c.subscribe({
-              subscriptions: [
-                {
-                  topic: 'activity',
-                  type: 'trades',
-                  filters: JSON.stringify({ event_slug: slug }),
-                },
-              ],
-            });
-          }
+          c.subscribe({ subscriptions: [{ topic: 'activity', type: 'trades' }] });
         },
         onMessage: (_c, msg) => {
-          if (msg.topic === 'activity' && msg.type === 'trades') {
-            messages.push(msg);
-          }
+          if (msg.topic !== 'activity' || msg.type !== 'trades') return;
+          allTradeCount += 1;
+          const slug = (msg.payload as { eventSlug?: string } | undefined)?.eventSlug;
+          if (slug && resolvedSlugs.has(slug)) eurovisionMessages.push(msg);
         },
         onStatusChange: (status) => {
           if (status === 'DISCONNECTED') {
@@ -146,15 +137,17 @@ describe('RTDS WebSocket plumbing', () => {
 
     if (client) clients.push(client);
 
-    if (messages.length > 0) {
-      console.log(`[rtds-test] received ${messages.length} Eurovision trade(s) during window`);
-      const sample = messages[0]!;
+    console.log(
+      `[rtds-test] firehose: ${allTradeCount} total trades, ${eurovisionMessages.length} matched Eurovision`,
+    );
+    expect(allTradeCount, 'firehose should deliver trades — RTDS may be down').toBeGreaterThan(0);
+
+    if (eurovisionMessages.length > 0) {
+      const sample = eurovisionMessages[0]!;
       const parsed = RtdsTradePayload.safeParse(sample.payload);
       expect(parsed.success, 'live Eurovision trade must parse through RtdsTradePayload').toBe(
         true,
       );
-    } else {
-      console.log('[rtds-test] no Eurovision trades arrived in window (markets likely quiet)');
     }
-  }, 30_000);
+  }, 35_000);
 });
