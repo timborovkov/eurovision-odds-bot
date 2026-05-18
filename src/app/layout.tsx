@@ -7,7 +7,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: env.NEXT_PUBLIC_APP_NAME,
-  description: env.NEXT_PUBLIC_APP_SUBTITLE ?? 'Live Polymarket whale trade watcher',
+  description: env.NEXT_PUBLIC_APP_SUBTITLE ?? 'Live Polymarket whale trade tape — large trades & clusters only',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
