@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { TICKER } from '@config/eurovision.config';
+import { TICKER } from '@config/markets.config';
 
 import { ConnectionDot } from './components/ConnectionDot';
 import { LiveTicker, type TickItem } from './components/LiveTicker';
@@ -13,7 +13,7 @@ import type { ConnectionState, FlaggedItem, FlagReason, ResolvedMarket } from '.
 
 const MAX_FEED_ITEMS = 250;
 const STALE_TICK_MS = 45_000;
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Eurovision Watch';
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'PolyTape';
 
 type RecentResponse = {
   flagged: Array<{
@@ -238,7 +238,8 @@ export default function Page() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{APP_NAME}</h1>
           <p className="mt-1 text-sm text-muted">
-            Live Polymarket Eurovision 2026 trade tape — large trades &amp; clusters only
+            {process.env.NEXT_PUBLIC_APP_SUBTITLE ??
+              'Live Polymarket whale trade tape — large trades & clusters only'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -280,7 +281,7 @@ export default function Page() {
           <div className="rounded-lg border border-line bg-panel px-4 py-8 text-center text-sm text-muted">
             Waiting for flagged trades. Adjust thresholds in
             <code className="mx-1 rounded bg-panel2 px-1.5 py-0.5 text-xs">
-              config/eurovision.config.ts
+              config/markets.config.ts
             </code>
             if nothing fires.
           </div>

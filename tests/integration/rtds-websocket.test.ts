@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { RealTimeDataClient } from '@polymarket/real-time-data-client';
 import type { Message } from '@polymarket/real-time-data-client';
 
-import { EUROVISION_MARKETS } from '@config/eurovision.config';
+import { WATCHED_MARKETS } from '@config/markets.config';
 import { resolveEvent } from '@/lib/polymarket/gamma';
 import { RtdsTradePayload } from '@/lib/watcher/rtds';
 
@@ -94,19 +94,19 @@ describe('RTDS WebSocket plumbing', () => {
     expect(isSnapshot || isUpdate, 'payload must be snapshot or live update').toBe(true);
   }, 25_000);
 
-  it('firehose subscription delivers parseable Eurovision trades within 20s', async () => {
+  it('firehose subscription delivers parseable configured-market trades within 20s', async () => {
     // Mirror what the prod watcher now does: subscribe to the full activity/trades
     // firehose (no server-side filter — RTDS's `event_slug` filter delivers zero
     // messages, confirmed against this same socket) and filter client-side.
-    const slugs = EUROVISION_MARKETS.map((m) => m.eventSlug);
+    const slugs = WATCHED_MARKETS.map((m) => m.eventSlug);
     const resolvedSlugs = new Set<string>();
     for (const slug of slugs) {
       const event = await resolveEvent(slug);
       if (event && event.markets.length > 0) resolvedSlugs.add(slug);
     }
-    expect(resolvedSlugs.size, 'no Eurovision slugs resolved').toBeGreaterThan(0);
+    expect(resolvedSlugs.size, 'no configured slugs resolved').toBeGreaterThan(0);
 
-    const eurovisionMessages: Message[] = [];
+    const matchedMessages: Message[] = [];
     let allTradeCount = 0;
     let client: RealTimeDataClient | null = null;
 
@@ -123,7 +123,7 @@ describe('RTDS WebSocket plumbing', () => {
           if (msg.topic !== 'activity' || msg.type !== 'trades') return;
           allTradeCount += 1;
           const slug = (msg.payload as { eventSlug?: string } | undefined)?.eventSlug;
-          if (slug && resolvedSlugs.has(slug)) eurovisionMessages.push(msg);
+          if (slug && resolvedSlugs.has(slug)) matchedMessages.push(msg);
         },
         onStatusChange: (status) => {
           if (status === 'DISCONNECTED') {
@@ -138,16 +138,14 @@ describe('RTDS WebSocket plumbing', () => {
     if (client) clients.push(client);
 
     console.log(
-      `[rtds-test] firehose: ${allTradeCount} total trades, ${eurovisionMessages.length} matched Eurovision`,
+      `[rtds-test] firehose: ${allTradeCount} total trades, ${matchedMessages.length} matched configured slugs`,
     );
     expect(allTradeCount, 'firehose should deliver trades — RTDS may be down').toBeGreaterThan(0);
 
-    if (eurovisionMessages.length > 0) {
-      const sample = eurovisionMessages[0]!;
+    if (matchedMessages.length > 0) {
+      const sample = matchedMessages[0]!;
       const parsed = RtdsTradePayload.safeParse(sample.payload);
-      expect(parsed.success, 'live Eurovision trade must parse through RtdsTradePayload').toBe(
-        true,
-      );
+      expect(parsed.success, 'live trade must parse through RtdsTradePayload').toBe(true);
     }
   }, 35_000);
 });

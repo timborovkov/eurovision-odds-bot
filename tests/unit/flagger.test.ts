@@ -4,7 +4,7 @@ import { Flagger } from '@/lib/watcher/flagger';
 import type { RtdsTrade } from '@/lib/watcher/rtds';
 
 // Tests use explicit small thresholds so the suite stays valid when
-// production thresholds in config/eurovision.config.ts are tuned for
+// production thresholds in config/markets.config.ts are tuned for
 // real Polymarket volume. The shape mirrors FLAG_THRESHOLDS.
 const TEST_THRESHOLDS = {
   singleTradeUsd: 1_000,

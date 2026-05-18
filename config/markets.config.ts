@@ -9,31 +9,29 @@ export type MarketRef = {
   label?: string;
 };
 
-export const EUROVISION_MARKETS: MarketRef[] = [
-  // Grand Final outcome markets (most volume, primary signal)
+// Slug = last path segment of the event URL: polymarket.com/event/<slug>
+// Add as many slugs as you want — one RTDS subscription is opened per entry.
+export const WATCHED_MARKETS: MarketRef[] = [
+  // Eurovision 2026 — the original use case for this tool
   { eventSlug: 'eurovision-winner-2026' }, // 40 open · ~$179M volume
   { eventSlug: 'eurovision-2026-top-3' }, // 25 open
   { eventSlug: 'eurovision-2026-top-5' }, // 25 open
   { eventSlug: 'eurovision-2026-top-10' }, // 25 open
-
-  // Voting-segment markets — jury and televote are independent, often diverge,
-  // and tend to attract the biggest single bets right before the show.
   { eventSlug: 'eurovision-2026-jury-winner' }, // 50 open
   { eventSlug: 'eurovision-2026-televote-winner' }, // 50 open
-
-  // Placement markets (each country binary YES/NO at that place)
   { eventSlug: 'eurovision-2nd-place-2026' }, // 50 open
   { eventSlug: 'eurovision-3rd-place-2026' }, // 50 open
   { eventSlug: 'eurovision-last-place-2026' }, // 40 open · inverse signal
-
-  // Prop markets that still correlate with outcome sentiment
   { eventSlug: 'eurovision-2026-best-nordic-country' }, // 6 open
   { eventSlug: 'eurovision-2026-margin-of-victory' }, // 7 open
-
-  // Semi-final advancement markets — high volume the day-of, then settle.
   { eventSlug: 'eurovision-2026-first-semi-final-winner' }, // 22 open
   { eventSlug: 'eurovision-2026-second-semi-final-winner' }, // 22 open
 ];
+
+// Tokens stripped from slugs when rendering filter chip labels.
+// Update to match the common prefix/suffix in your own slugs, or set to []
+// to show the raw slug as-is.
+export const SLUG_NOISE_TOKENS: string[] = ['eurovision', '2026'];
 
 export const FLAG_THRESHOLDS = {
   /** Notional in USDC = price * size. Any trade at/above this fires a flag. */

@@ -1,4 +1,4 @@
-import { FLAG_THRESHOLDS } from '@config/eurovision.config';
+import { FLAG_THRESHOLDS } from '@config/markets.config';
 
 import { type FlagReason } from '@/lib/flagReason';
 

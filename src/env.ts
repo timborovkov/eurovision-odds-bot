@@ -9,7 +9,8 @@ const Env = z.object({
   // NEXT_PUBLIC_ prefix lets the same value be inlined into the client bundle
   // (used by src/lib/url.ts) while still being readable server-side from `env`.
   NEXT_PUBLIC_POLYMARKET_BASE: z.string().default('https://polymarket.com'),
-  NEXT_PUBLIC_APP_NAME: z.string().default('Eurovision Watch'),
+  NEXT_PUBLIC_APP_NAME: z.string().default('PolyTape'),
+  NEXT_PUBLIC_APP_SUBTITLE: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(3000),
 });
 
