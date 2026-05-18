@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EUROVISION_MARKETS } from '@config/eurovision.config';
+import { WATCHED_MARKETS } from '@config/markets.config';
 import { resolveEvent } from '@/lib/polymarket/gamma';
 import { RtdsTradePayload } from '@/lib/watcher/rtds';
 
@@ -11,12 +11,12 @@ import { RtdsTradePayload } from '@/lib/watcher/rtds';
  * during the test window.
  */
 describe('RtdsTradePayload schema vs live data-api', () => {
-  it('parses recent trades for a resolved Eurovision market', async () => {
+  it('parses recent trades for a resolved configured market', async () => {
     let chosenConditionId: string | null = null;
 
     // Prefer open markets (likely to have recent trades) but fall back to any
-    // Eurovision market — even settled markets retain historical trade rows.
-    outer: for (const ref of EUROVISION_MARKETS) {
+    // configured market — even settled markets retain historical trade rows.
+    outer: for (const ref of WATCHED_MARKETS) {
       const event = await resolveEvent(ref.eventSlug);
       if (!event) continue;
       const candidates = [...event.markets, ...event.allMarkets.filter((m) => m.closed)];
@@ -36,7 +36,7 @@ describe('RtdsTradePayload schema vs live data-api', () => {
 
     expect(
       chosenConditionId,
-      'no Eurovision conditionId resolvable for schema test',
+      'no configured market conditionId resolvable for schema test',
     ).not.toBeNull();
 
     const url = `https://data-api.polymarket.com/trades?market=${chosenConditionId}&limit=20`;
@@ -47,7 +47,7 @@ describe('RtdsTradePayload schema vs live data-api', () => {
     expect(Array.isArray(body), 'data-api /trades should return an array').toBe(true);
     const rows = body as unknown[];
 
-    // Eurovision markets may be quiet; if there's literally no history, fall back to a
+    // Configured markets may be quiet; if there's literally no history, fall back to a
     // known high-volume condition (Polymarket's "BTC up or down today" daily market style
     // changes too often to hardcode — we just skip if no rows).
     if (rows.length === 0) {

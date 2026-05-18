@@ -1,5 +1,7 @@
 'use client';
 
+import { SLUG_NOISE_TOKENS } from '@config/markets.config';
+
 import type { ResolvedMarket } from '../types';
 
 export type MarketFilterValue = Set<string>;
@@ -69,16 +71,23 @@ export function MarketFilter({ markets, selected, onChange }: Props) {
 }
 
 /**
- * Strip the noise tokens ("eurovision", "2026") that appear in every configured
- * slug — they're not informative on filter chips. Polymarket uses both
- * `eurovision-2026-<thing>` and `eurovision-<thing>-2026` (plus
- * `eurovision-winner-2026`) shapes, so we remove the tokens anywhere they
- * appear, then collapse stray dashes.
+ * Strip configured noise tokens from a slug so filter chips stay short.
+ * Tokens are defined in SLUG_NOISE_TOKENS in config/markets.config.ts —
+ * update them to match the common prefix/suffix in your own event slugs.
+ *
+ * NOTE: @config/markets.config is a plain TypeScript constants file with no
+ * server-only imports. Do not add secrets or server-only values to that file —
+ * it is imported by client components and ends up in the browser bundle.
  */
-export function humanizeSlug(slug: string): string {
-  const stripped = slug
-    .replace(/\beurovision\b/gi, '')
-    .replace(/\b2026\b/g, '')
+export function humanizeSlug(slug: string, tokens = SLUG_NOISE_TOKENS): string {
+  const noisePattern =
+    tokens.length > 0
+      ? new RegExp(
+          `\\b(${tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`,
+          'gi',
+        )
+      : null;
+  const stripped = (noisePattern ? slug.replace(noisePattern, '') : slug)
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '');
   if (stripped.length === 0) return slug;

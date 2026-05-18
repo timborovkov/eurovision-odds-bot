@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { humanizeSlug } from '@/app/components/MarketFilter';
 
 describe('humanizeSlug', () => {
-  // Covers all 13 currently configured slugs so the filter chips stay short
-  // regardless of whether Polymarket put "2026" at the start, middle, or end.
+  // Covers the default SLUG_NOISE_TOKENS (['eurovision', '2026']) so filter chips
+  // stay short regardless of whether Polymarket put "2026" at the start, middle, or end.
   it.each([
     ['eurovision-winner-2026', 'Winner'],
     ['eurovision-2026-top-3', 'Top 3'],
@@ -19,7 +19,7 @@ describe('humanizeSlug', () => {
     ['eurovision-2026-margin-of-victory', 'Margin Of Victory'],
     ['eurovision-2026-first-semi-final-winner', 'First Semi Final Winner'],
     ['eurovision-2026-second-semi-final-winner', 'Second Semi Final Winner'],
-  ])('strips eurovision/2026 noise and title-cases %s → %s', (input, expected) => {
+  ])('strips configured noise tokens and title-cases %s → %s', (input, expected) => {
     expect(humanizeSlug(input)).toBe(expected);
   });
 
@@ -30,5 +30,14 @@ describe('humanizeSlug', () => {
 
   it('handles non-Eurovision slugs without mangling them', () => {
     expect(humanizeSlug('us-election-2024')).toBe('Us Election 2024');
+  });
+
+  it('title-cases the full slug when token list is empty', () => {
+    expect(humanizeSlug('eurovision-2026-top-3', [])).toBe('Eurovision 2026 Top 3');
+    expect(humanizeSlug('us-election-2024', [])).toBe('Us Election 2024');
+  });
+
+  it('falls back to raw slug when every token is stripped (empty-list excluded)', () => {
+    expect(humanizeSlug('eurovision-2026', ['eurovision', '2026'])).toBe('eurovision-2026');
   });
 });

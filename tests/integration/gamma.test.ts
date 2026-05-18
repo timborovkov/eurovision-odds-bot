@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { EUROVISION_MARKETS } from '@config/eurovision.config';
+import { WATCHED_MARKETS } from '@config/markets.config';
 import { resolveEvent } from '@/lib/polymarket/gamma';
 
 describe('Gamma market resolution', () => {
-  it.each(EUROVISION_MARKETS.map((m) => m.eventSlug))(
+  it.each(WATCHED_MARKETS.map((m) => m.eventSlug))(
     'event slug %s exists on Gamma with at least one child market',
     async (slug) => {
       const event = await resolveEvent(slug);
@@ -42,13 +42,13 @@ describe('Gamma market resolution', () => {
 
   it('at least one configured slug has open markets to subscribe to', async () => {
     let openTotal = 0;
-    for (const ref of EUROVISION_MARKETS) {
+    for (const ref of WATCHED_MARKETS) {
       const event = await resolveEvent(ref.eventSlug);
       if (event) openTotal += event.markets.length;
     }
     expect(
       openTotal,
-      'no configured Eurovision event has any open markets — the bot would have nothing to do',
+      'no configured event has any open markets — the bot would have nothing to do',
     ).toBeGreaterThan(0);
   }, 30_000);
 });

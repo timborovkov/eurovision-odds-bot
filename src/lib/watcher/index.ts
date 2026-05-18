@@ -1,4 +1,4 @@
-import { EUROVISION_MARKETS, TICKER } from '@config/eurovision.config';
+import { WATCHED_MARKETS, TICKER } from '@config/markets.config';
 
 import { prisma } from '@/lib/db';
 import { sendTelegram } from '@/lib/notify/telegram';
@@ -59,7 +59,7 @@ async function bootstrapMarkets(): Promise<string[]> {
   // each that's the difference between ~2.6s and ~250ms on boot — meaningful
   // against Railway's 30s healthcheck budget.
   const resolutions = await Promise.allSettled(
-    EUROVISION_MARKETS.map((ref) => resolveEvent(ref.eventSlug)),
+    WATCHED_MARKETS.map((ref) => resolveEvent(ref.eventSlug)),
   );
 
   // Phase 2: write per-event in series so SQLite doesn't see overlapping
@@ -68,7 +68,7 @@ async function bootstrapMarkets(): Promise<string[]> {
   // side, but the request fan-out is fine.
   const slugs: string[] = [];
   for (let i = 0; i < resolutions.length; i++) {
-    const ref = EUROVISION_MARKETS[i]!;
+    const ref = WATCHED_MARKETS[i]!;
     const result = resolutions[i]!;
     if (result.status === 'rejected') {
       console.warn(`[watcher] failed to resolve ${ref.eventSlug}`, result.reason);
@@ -205,8 +205,8 @@ async function handleTrade(trade: RtdsTrade): Promise<void> {
 
 async function handleTradeInner(trade: RtdsTrade): Promise<void> {
   if (!state.flagger) return;
-  // Some Eurovision events stream child markets we may not have catalogued (new sub-markets
-  // appearing late). We still process them — Gamma will fill in metadata next boot.
+  // Some events stream child markets that were not catalogued at boot (e.g. new sub-markets
+  // added after startup). We still process them — Gamma will fill in metadata next boot.
   const ctx = conditionContext.get(trade.conditionId);
   const notional = trade.price * trade.size;
   const ts = new Date(trade.timestamp);
@@ -340,7 +340,7 @@ export async function startWatcher(): Promise<void> {
   const slugs = await bootstrapMarkets();
   state.subscribedSlugs = slugs;
   if (slugs.length === 0) {
-    console.warn('[watcher] no event slugs resolved; check config/eurovision.config.ts');
+    console.warn('[watcher] no event slugs resolved; check config/markets.config.ts');
     return;
   }
 

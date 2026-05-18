@@ -7,7 +7,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: env.NEXT_PUBLIC_APP_NAME,
-  description: 'Live Polymarket Eurovision 2026 trade watcher',
+  description: env.NEXT_PUBLIC_APP_SUBTITLE ?? 'Live Polymarket whale trade watcher',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
